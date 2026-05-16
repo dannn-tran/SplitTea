@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Events.fs" />
+    <Compile Include="Reducer.fs" />
+    <Compile Include="Projections.fs" />
+    <Compile Include="Validation.fs" />
+  </ItemGroup>
+</Project>
