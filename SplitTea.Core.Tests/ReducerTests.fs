@@ -50,7 +50,7 @@ module ``reduce ExpenseAdded`` =
         let state = makeBaseState () |> fun s -> Reducer.reduce s workedExpense1
         let exp   = Map.find expense1Id state.Expenses
         Assert.False(exp.IsDeleted)
-        Assert.Equal(84m, exp.Amount)
+        Assert.Equal(84m, exp.PaidAmount)
         Assert.Equal(aliceId, exp.PaidBy)
 
     [<Fact>]
@@ -71,25 +71,25 @@ module ``reduce ExpenseCorrected`` =
         let state0 = baseWithExpense ()
         let correction = correctWith aliceId {
             OriginalExpenseId = expense1Id
-            Description = Some "Updated"; Amount = None; Currency = None
-            PaidBy = None; Split = None; Date = None; Notes = None; Reason = None
+            Description = Some "Updated"; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+            PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; ContextId = Unchanged; Reason = None
         }
         let exp = Reducer.reduce state0 correction |> fun s -> Map.find expense1Id s.Expenses
         Assert.Equal("Updated", exp.Description)
-        Assert.Equal(84m, exp.Amount)
+        Assert.Equal(84m, exp.PaidAmount)
 
     [<Fact>]
-    let ``Notes = Some None clears notes`` () =
+    let ``Notes = Clear clears notes`` () =
         let withNotes = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "X"
-            Amount = 10m; Currency = "GBP"; PaidBy = aliceId
-            Split = Equal [aliceId]; Date = date 2024 1 1; Notes = Some "keep"
+            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            Split = Equal [aliceId]; Date = date 2024 1 1; Category = None; Notes = Some "keep"; ContextId = None
         })
         let clear = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
-            Description = None; Amount = None; Currency = None
+            Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
             PaidBy = None; Split = None; Date = None
-            Notes = Some None
+            Category = Unchanged; Notes = Clear; ContextId = Unchanged
             Reason = None
         })
         let state =
@@ -99,17 +99,17 @@ module ``reduce ExpenseCorrected`` =
         Assert.Equal(None, (Map.find expense3Id state.Expenses).Notes)
 
     [<Fact>]
-    let ``Notes = None leaves notes unchanged`` () =
+    let ``Notes = Unchanged leaves notes unchanged`` () =
         let withNotes = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "X"
-            Amount = 10m; Currency = "GBP"; PaidBy = aliceId
-            Split = Equal [aliceId]; Date = date 2024 1 1; Notes = Some "keep"
+            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            Split = Equal [aliceId]; Date = date 2024 1 1; Category = None; Notes = Some "keep"; ContextId = None
         })
         let noChange = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
-            Description = None; Amount = None; Currency = None
+            Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
             PaidBy = None; Split = None; Date = None
-            Notes = None
+            Category = Unchanged; Notes = Unchanged; ContextId = Unchanged
             Reason = None
         })
         let state =
@@ -123,8 +123,8 @@ module ``reduce ExpenseCorrected`` =
         let state0 = baseWithExpense ()
         let correction = correctWith aliceId {
             OriginalExpenseId = unknownExpenseId
-            Description = Some "X"; Amount = None; Currency = None
-            PaidBy = None; Split = None; Date = None; Notes = None; Reason = None
+            Description = Some "X"; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+            PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; ContextId = Unchanged; Reason = None
         }
         let state1 = Reducer.reduce state0 correction
         Assert.True(state0.Expenses = state1.Expenses)
@@ -149,7 +149,7 @@ module ``reduce SettlementRecorded`` =
     let ``appends payload to Settlements`` () =
         let s = SettlementRecorded (envelope carolId 10 {
             SettlementId = settlement1Id; From = carolId; To = aliceId
-            Amount = 42m; Currency = "GBP"; Date = date 2024 1 3; Notes = None
+            Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
         })
         let state = makeBaseState () |> fun st -> Reducer.reduce st s
         Assert.Equal(1, List.length state.Settlements)
@@ -160,11 +160,11 @@ module ``reduce SettlementRecorded`` =
     let ``accumulates multiple settlements`` () =
         let s1 = SettlementRecorded (envelope carolId 10 {
             SettlementId = settlement1Id; From = carolId; To = aliceId
-            Amount = 42m; Currency = "GBP"; Date = date 2024 1 3; Notes = None
+            Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
         })
         let s2 = SettlementRecorded (envelope carolId 11 {
             SettlementId = settlement2Id; From = carolId; To = bobId
-            Amount = 82m; Currency = "GBP"; Date = date 2024 1 3; Notes = None
+            Amount = 82m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
         })
         let state =
             makeBaseState ()

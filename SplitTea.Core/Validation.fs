@@ -57,28 +57,31 @@ module Validation =
             match event with
             | GroupCreated _ -> []
             | MemberAdded _ -> []
+            | ContextCreated e ->
+                let p = e.Payload
+                match p.Members with
+                | None      -> []
+                | Some mids -> mids |> List.collect (checkMember state.Members)
             | ExpenseAdded e ->
                 let p = e.Payload
-                checkAmount p.Amount
-                @ checkCurrency state.Currency p.Currency
+                checkAmount p.PaidAmount
                 @ checkMember state.Members p.PaidBy
-                @ checkSplit p.Split state.Members p.Amount
+                @ checkSplit p.Split state.Members p.PaidAmount
             | ExpenseCorrected e ->
                 let p = e.Payload
                 match Map.tryFind p.OriginalExpenseId state.Expenses with
                 | None -> [ UnknownExpense p.OriginalExpenseId ]
                 | Some ex when ex.IsDeleted -> [ DeletedExpense p.OriginalExpenseId ]
                 | Some ex ->
-                    let effectiveAmount = p.Amount |> Option.defaultValue ex.Amount
-                    let effectiveSplit  = p.Split  |> Option.defaultValue ex.Split
-                    let amountErrs   = p.Amount   |> Option.map checkAmount                    |> Option.defaultValue []
-                    let currencyErrs = p.Currency |> Option.map (checkCurrency state.Currency) |> Option.defaultValue []
-                    let paidByErrs   = p.PaidBy   |> Option.map (checkMember state.Members)    |> Option.defaultValue []
+                    let effectiveAmount = p.PaidAmount |> Option.defaultValue ex.PaidAmount
+                    let effectiveSplit  = p.Split      |> Option.defaultValue ex.Split
+                    let amountErrs  = p.PaidAmount |> Option.map checkAmount                 |> Option.defaultValue []
+                    let paidByErrs  = p.PaidBy     |> Option.map (checkMember state.Members) |> Option.defaultValue []
                     let splitErrs =
-                        match p.Split, p.Amount with
+                        match p.Split, p.PaidAmount with
                         | None, None -> []
                         | _          -> checkSplit effectiveSplit state.Members effectiveAmount
-                    amountErrs @ currencyErrs @ paidByErrs @ splitErrs
+                    amountErrs @ paidByErrs @ splitErrs
             | ExpenseDeleted e ->
                 let p = e.Payload
                 match Map.tryFind p.ExpenseId state.Expenses with
@@ -91,6 +94,5 @@ module Validation =
                 @ checkMember state.Members p.To
                 @ (if p.From = p.To then [ SelfSettlement ] else [])
                 @ checkAmount p.Amount
-                @ checkCurrency state.Currency p.Currency
 
         if List.isEmpty errors then Ok event else Error errors

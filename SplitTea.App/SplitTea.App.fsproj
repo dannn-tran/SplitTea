@@ -5,6 +5,19 @@
   <ItemGroup>
     <Compile Include="Infrastructure/SupabaseClient.fs" />
     <Compile Include="Infrastructure/Auth.fs" />
+    <Compile Include="Infrastructure/IndexedDb.fs" />
+    <Compile Include="Infrastructure/SupabaseSync.fs" />
+    <Compile Include="Infrastructure/FxRates.fs" />
+    <Compile Include="Application/Storage.fs" />
+    <Compile Include="Application/Commands.fs" />
+    <Compile Include="Application/Sync.fs" />
+    <Compile Include="UI/Types.fs" />
+    <Compile Include="UI/Pages/Group.fs" />
+    <Compile Include="UI/Pages/ExpenseForm.fs" />
+    <Compile Include="UI/Pages/SettlementForm.fs" />
+    <Compile Include="UI/Pages/ContextForm.fs" />
+    <Compile Include="UI/Pages/ContextDetail.fs" />
+    <Compile Include="UI/Program.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>
   <ItemGroup>

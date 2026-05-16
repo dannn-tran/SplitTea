@@ -27,8 +27,8 @@ let ``MemberAdded returns Ok`` () =
 module ``validateEvent ExpenseAdded`` =
     let private basePayload = {
         ExpenseId = expense1Id; Description = "Test"
-        Amount = 10m; Currency = "GBP"; PaidBy = aliceId
-        Split = Equal [aliceId; bobId]; Date = date 2024 1 1; Notes = None
+        PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+        Split = Equal [aliceId; bobId]; Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
     }
 
     let private validate payload =
@@ -41,15 +41,15 @@ module ``validateEvent ExpenseAdded`` =
 
     [<Fact>]
     let ``AmountMustBePositive for zero amount`` () =
-        assertError AmountMustBePositive (validate { basePayload with Amount = 0m })
+        assertError AmountMustBePositive (validate { basePayload with PaidAmount = 0m })
 
     [<Fact>]
     let ``AmountMustBePositive for negative amount`` () =
-        assertError AmountMustBePositive (validate { basePayload with Amount = -5m })
+        assertError AmountMustBePositive (validate { basePayload with PaidAmount = -5m })
 
     [<Fact>]
-    let ``CurrencyMismatch for wrong currency`` () =
-        assertError (CurrencyMismatch ("GBP", "USD")) (validate { basePayload with Currency = "USD" })
+    let ``foreign currency expense is valid`` () =
+        assertOk (validate { basePayload with PaidCurrency = "USD"; ExchangeRate = Some 0.79m })
 
     [<Fact>]
     let ``UnknownMember for unknown PaidBy`` () =
@@ -88,15 +88,15 @@ module ``validateEvent ExpenseAdded`` =
 
     [<Fact>]
     let ``collects multiple errors in one result`` () =
-        let result = validate { basePayload with Amount = -1m; Currency = "USD" }
+        let result = validate { basePayload with PaidAmount = -1m; PaidBy = unknownMemberId }
         assertError AmountMustBePositive result
-        assertError (CurrencyMismatch ("GBP", "USD")) result
+        assertError (UnknownMember unknownMemberId) result
 
 module ``validateEvent ExpenseCorrected`` =
     let private baseCorrection = {
         OriginalExpenseId = expense1Id
-        Description = None; Amount = None; Currency = None
-        PaidBy = None; Split = None; Date = None; Notes = None; Reason = None
+        Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+        PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; ContextId = Unchanged; Reason = None
     }
 
     let private stateWithExpense1 () =
@@ -126,19 +126,19 @@ module ``validateEvent ExpenseCorrected`` =
         assertError (DeletedExpense expense1Id) result
 
     [<Fact>]
-    let ``ExactSplitSumMismatch when corrected Amount breaks existing Exact split`` () =
-        // Add expense with Exact split summing to 10, then correct Amount to 20
+    let ``ExactSplitSumMismatch when corrected PaidAmount breaks existing Exact split`` () =
+        // Add expense with Exact split summing to 10, then correct PaidAmount to 20
         let exactExpense = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "Exact"
-            Amount = 10m; Currency = "GBP"; PaidBy = aliceId
+            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
             Split = Exact (Map.ofList [aliceId, 5m; bobId, 5m])
-            Date = date 2024 1 1; Notes = None
+            Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
         })
         let state = makeBaseState () |> fun s -> Reducer.reduce s exactExpense
         let correction = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
-            Description = None; Amount = Some 20m; Currency = None
-            PaidBy = None; Split = None; Date = None; Notes = None; Reason = None
+            Description = None; PaidAmount = Some 20m; PaidCurrency = None; ExchangeRate = Unchanged
+            PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; ContextId = Unchanged; Reason = None
         })
         assertError (ExactSplitSumMismatch (20m, 10m))
             (Validation.validateEvent state correction)
@@ -174,7 +174,7 @@ module ``validateEvent SettlementRecorded`` =
     let private basePayload = {
         SettlementId = settlement1Id
         From = carolId; To = aliceId
-        Amount = 42m; Currency = "GBP"
+        Amount = 42m; Currency = "GBP"; ExchangeRate = None
         Date = date 2024 1 3; Notes = None
     }
 
@@ -205,6 +205,5 @@ module ``validateEvent SettlementRecorded`` =
         assertError AmountMustBePositive (validate { basePayload with Amount = 0m })
 
     [<Fact>]
-    let ``CurrencyMismatch for wrong currency`` () =
-        assertError (CurrencyMismatch ("GBP", "EUR"))
-            (validate { basePayload with Currency = "EUR" })
+    let ``foreign currency settlement is valid`` () =
+        assertOk (validate { basePayload with Currency = "EUR"; ExchangeRate = Some 1.17m })

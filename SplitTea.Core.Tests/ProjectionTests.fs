@@ -19,9 +19,9 @@ module ``computeNetPositions`` =
         // non-payers each owe 3.34; payer.net = 6.68
         let expense = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "Rounding test"
-            Amount = 10m; Currency = "GBP"; PaidBy = aliceId
+            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
             Split = Equal [aliceId; bobId; carolId]
-            Date = date 2024 1 1; Notes = None
+            Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
         })
         let state = Reducer.replayEvents [
             groupCreated; aliceAdded; bobAdded; carolAdded; expense
@@ -45,7 +45,7 @@ module ``computeNetPositions`` =
         // Carol pays Alice 42 → Alice 0, Bob +82, Carol -82
         let settle = SettlementRecorded (envelope carolId 10 {
             SettlementId = settlement1Id; From = carolId; To = aliceId
-            Amount = 42m; Currency = "GBP"; Date = date 2024 1 3; Notes = None
+            Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
         })
         let state = Reducer.replayEvents [
             groupCreated; aliceAdded; bobAdded; carolAdded
