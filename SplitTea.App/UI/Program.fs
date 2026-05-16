@@ -115,12 +115,41 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | AuthReceived (Auth.SignedIn user) ->
         let page =
             match model.Page with
-            | Loading -> if model.ActiveGroupId.IsSome then Loading else SignIn
+            | Loading ->
+                if model.ActiveGroupId.IsSome then Loading
+#if DEVMODE
+                elif DevMode.isEnabled () then DevBootstrap
+#endif
+                else SignIn
             | p -> p
         { model with Auth = Some user; IsAuthLoading = false; Page = page }, Cmd.none
 
     | AuthReceived Auth.SignedOut ->
-        { model with Auth = None; IsAuthLoading = false; Page = SignIn }, Cmd.none
+        let page =
+#if DEVMODE
+            if DevMode.isEnabled () then DevBootstrap else SignIn
+#else
+            SignIn
+#endif
+        { model with Auth = None; IsAuthLoading = false; Page = page }, Cmd.none
+
+#if DEVMODE
+    | CreateDevGroup ->
+        let cmd =
+            Cmd.OfAsync.either
+                DevBootstrap.createLocalGroup
+                ()
+                (fun gid -> DevGroupCreated (Ok gid))
+                (fun ex -> DevGroupCreated (Error ex.Message))
+        { model with IsAuthLoading = true }, cmd
+
+    | DevGroupCreated (Ok gid) ->
+        let cmd = Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupLoaded (gid, gs))
+        { model with IsAuthLoading = false }, cmd
+
+    | DevGroupCreated (Error _) ->
+        { model with IsAuthLoading = false }, Cmd.none
+#endif
 
     | SignInEmailSet email ->
         { model with SignInEmail = email; SignInError = None }, Cmd.none
@@ -406,6 +435,36 @@ let private signInView (model: Model) (dispatch: Msg -> unit) =
         ]
     ]
 
+#if DEVMODE
+let private devBootstrapView (model: Model) (dispatch: Msg -> unit) =
+    Html.div [
+        prop.className "min-h-screen bg-gray-50 flex items-center justify-center px-4"
+        prop.children [
+            Html.div [
+                prop.className "w-full max-w-sm space-y-6"
+                prop.children [
+                    Html.h1 [ prop.className "text-3xl font-bold text-center text-teal-700"; prop.text "SplitTea" ]
+                    Html.div [
+                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4"
+                        prop.children [
+                            Html.p [
+                                prop.className "text-sm text-gray-600"
+                                prop.text "Dev mode is active. Create a local-only test group stored in IndexedDB."
+                            ]
+                            Html.button [
+                                prop.className "w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg transition-colors"
+                                prop.disabled model.IsAuthLoading
+                                prop.text (if model.IsAuthLoading then "Creating..." else "Create Local Test Group")
+                                prop.onClick (fun _ -> dispatch CreateDevGroup)
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+#endif
+
 let private loadingView () =
     Html.div [
         prop.className "min-h-screen bg-gray-50 flex items-center justify-center"
@@ -418,6 +477,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
     match model.Page with
     | Loading             -> loadingView ()
     | SignIn              -> signInView model dispatch
+#if DEVMODE
+    | DevBootstrap        -> devBootstrapView model dispatch
+#endif
     | GroupOverview       -> GroupPage.view model.GroupState dispatch
     | AddExpense          -> ExpenseFormPage.view model.GroupState model.ExchangeRates model.ExpenseForm dispatch
     | RecordSettlement    -> SettlementFormPage.view model.GroupState model.ExchangeRates model.SettlementForm dispatch

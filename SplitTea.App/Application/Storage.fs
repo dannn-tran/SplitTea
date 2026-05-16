@@ -239,6 +239,15 @@ let private mkEnv<'P> (raw: obj) (payload: 'P) : EventEnvelope<'P> = {
     Payload    = payload
 }
 
+let private eventSortKey (raw: obj) =
+    let sequence = int64 (float raw?sequence)
+    let occurredAt = string raw?occurredAt
+    let eventId = string raw?id
+    if sequence > 0L then
+        0, sequence, "", eventId
+    else
+        1, 0L, occurredAt, eventId
+
 let private fromStored (raw: obj) : GroupEvent option =
     let p : obj = raw?payload
     try
@@ -322,7 +331,7 @@ let loadGroupState (groupId: GroupId) : Async<GroupState> =
         let! raws = IndexedDb.getEventsByGroup (groupIdStr groupId)
         let events =
             raws
-            |> Array.sortBy (fun r -> float r?sequence)
+            |> Array.sortBy eventSortKey
             |> Array.choose fromStored
             |> Array.toList
         return Reducer.replayEvents events
@@ -333,6 +342,7 @@ let getPendingEvents () : Async<(GroupId * GroupEvent) list> =
         let! raws = IndexedDb.getPendingEvents ()
         return
             raws
+            |> Array.sortBy eventSortKey
             |> Array.choose (fun r ->
                 fromStored r |> Option.map (fun e -> parseGroupId (string r?groupId), e)
             )

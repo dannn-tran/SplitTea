@@ -10,6 +10,7 @@
     <Compile Include="Infrastructure/SupabaseSync.fs" />
     <Compile Include="Infrastructure/FxRates.fs" />
     <Compile Include="Application/Storage.fs" />
+    <Compile Include="Application/DevBootstrap.fs" />
     <Compile Include="Application/Commands.fs" />
     <Compile Include="Application/Sync.fs" />
     <Compile Include="UI/Types.fs" />

@@ -5,6 +5,9 @@ open SplitTea.Core
 type Page =
     | SignIn
     | Loading
+#if DEVMODE
+    | DevBootstrap
+#endif
     | GroupOverview
     | AddExpense
     | RecordSettlement
@@ -67,6 +70,10 @@ type Model = {
 
 type Msg =
     | AuthReceived      of Auth.AuthEvent
+#if DEVMODE
+    | CreateDevGroup
+    | DevGroupCreated   of Result<GroupId, string>
+#endif
     | SignInEmailSet     of string
     | SignInSubmit
     | SignInDone        of Result<unit, string>

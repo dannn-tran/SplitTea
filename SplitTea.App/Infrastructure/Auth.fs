@@ -51,8 +51,8 @@ let getUser () : Async<AuthUser option> =
 #if DEVMODE
         if DevMode.isEnabled () then
             return Some {
-                Id = "00000000-0000-0000-0000-000000000001"
-                Email = Some "dev@splittea.local"
+                Id = string DevMode.fakeUserId
+                Email = Some DevMode.fakeUserEmail
             }
         else
 #endif
@@ -65,8 +65,8 @@ let subscribe (callback: AuthEvent -> unit) : unit -> unit =
 #if DEVMODE
     if DevMode.isEnabled () then
         let user = {
-            Id = "00000000-0000-0000-0000-000000000001"
-            Email = Some "dev@splittea.local"
+            Id = string DevMode.fakeUserId
+            Email = Some DevMode.fakeUserEmail
         }
         callback (SignedIn user)
         fun () -> ()
