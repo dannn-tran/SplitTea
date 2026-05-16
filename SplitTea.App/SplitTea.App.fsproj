@@ -3,6 +3,8 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Infrastructure/SupabaseClient.fs" />
+    <Compile Include="Infrastructure/Auth.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>
   <ItemGroup>
