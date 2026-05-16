@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "dotnet fable watch --outDir output --run vite",
+    "start": "dotnet fable watch --define DEVMODE --outDir output --run vite",
     "build": "dotnet fable --outDir output --run vite build"
   },
   "dependencies": {

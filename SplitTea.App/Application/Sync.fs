@@ -7,22 +7,32 @@ open SplitTea.Core
 // Failures are silently skipped — the event stays pending and will retry next time.
 let pushPending () : Async<unit> =
     async {
-        let! pending = IndexedDb.getPendingEvents ()
-        for raw in pending do
-            let! result = SupabaseSync.pushEvent raw
-            match result with
-            | Ok ()    -> do! IndexedDb.markSynced (string raw?id)
-            | Error _  -> ()
+#if DEVMODE
+        if DevMode.isEnabled () then
+            ()
+        else
+#endif
+            let! pending = IndexedDb.getPendingEvents ()
+            for raw in pending do
+                let! result = SupabaseSync.pushEvent raw
+                match result with
+                | Ok ()    -> do! IndexedDb.markSynced (string raw?id)
+                | Error _  -> ()
     }
 
 // Subscribe to Supabase Realtime for a group.
 // Each inbound INSERT is saved locally (marked synced=true) then onNewEvent () is called.
 // Returns an unsubscribe function.
 let subscribeGroup (groupId: GroupId) (onNewEvent: unit -> unit) : unit -> unit =
-    let (GroupId g) = groupId
-    SupabaseSync.subscribeGroup (string g) (fun normalized ->
-        async {
-            do! IndexedDb.saveEvent normalized
-            onNewEvent ()
-        } |> Async.StartImmediate
-    )
+#if DEVMODE
+    if DevMode.isEnabled () then
+        fun () -> ()
+    else
+#endif
+        let (GroupId g) = groupId
+        SupabaseSync.subscribeGroup (string g) (fun normalized ->
+            async {
+                do! IndexedDb.saveEvent normalized
+                onNewEvent ()
+            } |> Async.StartImmediate
+        )

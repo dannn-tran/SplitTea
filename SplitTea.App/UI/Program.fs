@@ -7,10 +7,10 @@ open Fable.Core.JsInterop
 open SplitTea.Core
 open UITypes
 
-let private localStorage : obj = emitJsExpr () "localStorage"
+let private browserStorage : obj = emitJsExpr () "localStorage"
 
 let private getActiveGroupId () : GroupId option =
-    let v : obj = localStorage?getItem("activeGroupId")
+    let v : obj = browserStorage?getItem("activeGroupId")
     if isNull v then None
     else
         try Some (GroupId (System.Guid.Parse (string v)))
@@ -18,7 +18,7 @@ let private getActiveGroupId () : GroupId option =
 
 let private setActiveGroupId (id: GroupId) =
     let (GroupId g) = id
-    localStorage?setItem("activeGroupId", string g) |> ignore
+    browserStorage?setItem("activeGroupId", string g) |> ignore
 
 let private todayStr () =
     let d = System.DateTime.Now

@@ -23,6 +23,11 @@ let private mapUser (jsUser: obj) : AuthUser option =
 
 let signInWithMagicLink (email: string) : Async<Result<unit, string>> =
     async {
+#if DEVMODE
+        if DevMode.isEnabled () then
+            return Ok ()
+        else
+#endif
         let! result = supabase?auth?signInWithOtp({| email = email |}) |> Async.AwaitPromise
         if isNull result?error then
             return Ok ()
@@ -32,18 +37,41 @@ let signInWithMagicLink (email: string) : Async<Result<unit, string>> =
 
 let signOut () : Async<unit> =
     async {
+#if DEVMODE
+        if DevMode.isEnabled () then
+            ()
+        else
+#endif
         let! _ = supabase?auth?signOut() |> Async.AwaitPromise
         ()
     }
 
 let getUser () : Async<AuthUser option> =
     async {
+#if DEVMODE
+        if DevMode.isEnabled () then
+            return Some {
+                Id = "00000000-0000-0000-0000-000000000001"
+                Email = Some "dev@splittea.local"
+            }
+        else
+#endif
         let! result = supabase?auth?getUser() |> Async.AwaitPromise
         return mapUser result?data?user
     }
 
 // Returns an unsubscribe function.
 let subscribe (callback: AuthEvent -> unit) : unit -> unit =
+#if DEVMODE
+    if DevMode.isEnabled () then
+        let user = {
+            Id = "00000000-0000-0000-0000-000000000001"
+            Email = Some "dev@splittea.local"
+        }
+        callback (SignedIn user)
+        fun () -> ()
+    else
+#endif
     let sub =
         supabase?auth?onAuthStateChange(fun (event: string) (session: obj) ->
             if event = "SIGNED_IN" && not (isNull session) then

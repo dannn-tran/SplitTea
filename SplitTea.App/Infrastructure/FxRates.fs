@@ -5,7 +5,7 @@ open Fable.Core.JsInterop
 
 // ─── JS helpers ───────────────────────────────────────────────────────────────
 
-let private localStorage : obj = emitJsExpr () "localStorage"
+let private browserStorage : obj = emitJsExpr () "localStorage"
 
 let private objKeys (o: obj) : string list =
     emitJsExpr o "Object.keys($0)" |> unbox<string[]> |> Array.toList
@@ -27,7 +27,7 @@ let private cacheTtlMs = 86_400_000.0  // 24 hours
 
 let private tryReadCache (baseCurrency: string) : Map<string, decimal> option =
     try
-        let raw : obj = localStorage?getItem(cacheKey)
+        let raw : obj = browserStorage?getItem(cacheKey)
         if isNull raw then None
         else
             let json : obj = JS.JSON.parse (string raw)
@@ -55,7 +55,7 @@ let private writeCache (baseCurrency: string) (rates: Map<string, decimal>) =
             "rates"     ==> ratesObj
             "fetchedAt" ==> emitJsExpr () "Date.now()"
         ]
-        localStorage?setItem(cacheKey, JS.JSON.stringify payload) |> ignore
+        browserStorage?setItem(cacheKey, JS.JSON.stringify payload) |> ignore
     with _ -> ()
 
 // ─── Fetch from edge function ─────────────────────────────────────────────────

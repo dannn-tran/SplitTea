@@ -3,6 +3,7 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Infrastructure/DevMode.fs" />
     <Compile Include="Infrastructure/SupabaseClient.fs" />
     <Compile Include="Infrastructure/Auth.fs" />
     <Compile Include="Infrastructure/IndexedDb.fs" />
