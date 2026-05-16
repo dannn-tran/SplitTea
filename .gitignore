@@ -57,3 +57,11 @@ TestResult.xml
 nunit-*.xml
 
 .idea/
+
+# Node.js
+node_modules/
+dist/
+
+# Fable compiled output
+output/
+.fable/

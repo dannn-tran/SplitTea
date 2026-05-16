@@ -7,6 +7,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SplitTea.Core", "SplitTea.C
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SplitTea.Core.Tests", "SplitTea.Core.Tests\SplitTea.Core.Tests.fsproj", "{4B6C7D8E-9F0A-1234-CDEF-012345678902}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SplitTea.App", "SplitTea.App\SplitTea.App.fsproj", "{6D8E9F0A-1B2C-3456-EF01-234567890A04}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,5 +23,9 @@ Global
 		{4B6C7D8E-9F0A-1234-CDEF-012345678902}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4B6C7D8E-9F0A-1234-CDEF-012345678902}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4B6C7D8E-9F0A-1234-CDEF-012345678902}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6D8E9F0A-1B2C-3456-EF01-234567890A04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6D8E9F0A-1B2C-3456-EF01-234567890A04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6D8E9F0A-1B2C-3456-EF01-234567890A04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6D8E9F0A-1B2C-3456-EF01-234567890A04}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
