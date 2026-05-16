@@ -21,7 +21,8 @@ module Projections =
         match split with
         | Equal members ->
             let n = List.length members
-            let share = round2 (amount / decimal n)
+            // Ceiling rounding: non-payers round up, payer absorbs any negative remainder
+            let share = System.Math.Ceiling(amount * 100m / decimal n) / 100m
             let base' = members |> List.map (fun m -> m, share) |> Map.ofList
             let remainder = amount - share * decimal n
             let payerShare = Map.tryFind paidBy base' |> Option.defaultValue 0m
