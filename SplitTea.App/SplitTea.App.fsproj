@@ -14,11 +14,9 @@
     <Compile Include="Application/Commands.fs" />
     <Compile Include="Application/Sync.fs" />
     <Compile Include="UI/Types.fs" />
-    <Compile Include="UI/Pages/Group.fs" />
+    <Compile Include="UI/Pages/Space.fs" />
     <Compile Include="UI/Pages/ExpenseForm.fs" />
     <Compile Include="UI/Pages/SettlementForm.fs" />
-    <Compile Include="UI/Pages/ContextForm.fs" />
-    <Compile Include="UI/Pages/ContextDetail.fs" />
     <Compile Include="UI/Program.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>

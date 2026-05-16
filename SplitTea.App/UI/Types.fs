@@ -8,21 +8,10 @@ type Page =
 #if DEVMODE
     | DevBootstrap
 #endif
-    | GroupOverview
+    | SpaceOverview
     | AddExpense
     | RecordSettlement
     | Analytics
-    | CreateContext
-    | ContextDetail of SplitTea.Core.ContextId
-
-type ContextForm = {
-    Name         : string
-    Template     : SplitTea.Core.ContextTemplate
-    DateFromText : string
-    DateToText   : string
-    IsSubmitting : bool
-    Error        : string option
-}
 
 type ExpenseForm = {
     Description      : string
@@ -33,7 +22,6 @@ type ExpenseForm = {
     DateText         : string
     Category         : string
     Notes            : string
-    ContextIndex     : int  // 0 = no context, 1+ = index into sorted context list
     IsSubmitting     : bool
     Error            : string option
 }
@@ -57,13 +45,12 @@ type SettlementForm = {
 type Model = {
     Auth           : Auth.AuthUser option
     Page           : Page
-    ActiveGroupId  : GroupId option
-    GroupState     : GroupState
+    ActiveSpaceId  : SpaceId option
+    SpaceState     : SpaceState
     ExchangeRates  : Map<string, decimal>  // base = group currency → other currencies
     SignInEmail    : string
     SignInError    : string option
     IsAuthLoading  : bool
-    ContextForm    : ContextForm
     ExpenseForm    : ExpenseForm
     SettlementForm : SettlementForm
 }
@@ -71,15 +58,15 @@ type Model = {
 type Msg =
     | AuthReceived      of Auth.AuthEvent
 #if DEVMODE
-    | CreateDevGroup
-    | DevGroupCreated   of Result<GroupId, string>
+    | CreateDevSpace
+    | DevSpaceCreated   of Result<SpaceId, string>
 #endif
     | SignInEmailSet     of string
     | SignInSubmit
     | SignInDone        of Result<unit, string>
     | SignOut
-    | GroupLoaded       of GroupId * GroupState
-    | GroupNotFound
+    | SpaceLoaded       of SpaceId * SpaceState
+    | SpaceNotFound
     | NavigateTo        of Page
     | AddExpenseClick
     | RecordSettlementClick
@@ -89,12 +76,7 @@ type Msg =
     | SettlementFormSet    of SettlementForm
     | SettlementSubmit
     | SettlementSaved      of Result<unit, string>
-    | GroupStateUpdated    of GroupState
-    | RemoteEventReceived  of GroupId
+    | SpaceStateUpdated    of SpaceState
+    | RemoteEventReceived  of SpaceId
     | SyncDone
     | ExchangeRatesLoaded  of Map<string, decimal>
-    | CreateContextClick
-    | ContextFormSet       of ContextForm
-    | ContextSubmit
-    | ContextSaved         of Result<unit, string>
-    | OpenContext          of ContextId

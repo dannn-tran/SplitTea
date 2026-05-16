@@ -71,7 +71,7 @@ module Projections =
         let current = Map.tryFind memberId m |> Option.defaultValue 0m
         Map.add memberId (current + delta) m
 
-    let computeNetPositions (state: GroupState) : NetPosition list =
+    let computeNetPositions (state: SpaceState) : NetPosition list =
         let init = state.Members |> Map.map (fun _ _ -> 0m)
 
         let afterExpenses =
@@ -127,20 +127,20 @@ module Projections =
 
         go creditors debtors []
 
-    let private activeExpenses (state: GroupState) =
+    let private activeExpenses (state: SpaceState) =
         state.Expenses
         |> Map.toList
         |> List.map snd
         |> List.filter (fun e -> not e.IsDeleted)
 
-    let computeSpendingByCategory (state: GroupState) : CategorySpend list =
+    let computeSpendingByCategory (state: SpaceState) : CategorySpend list =
         activeExpenses state
         |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e.Category, amt))
         |> List.groupBy (fun (cat, _) -> cat |> Option.defaultValue "Uncategorized")
         |> List.map (fun (cat, xs) -> { Category = cat; Total = xs |> List.sumBy snd })
         |> List.sortByDescending (fun c -> c.Total)
 
-    let computeSpendingByPayer (state: GroupState) : MemberSpend list =
+    let computeSpendingByPayer (state: SpaceState) : MemberSpend list =
         activeExpenses state
         |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e.PaidBy, amt))
         |> List.groupBy fst
@@ -185,7 +185,7 @@ module Projections =
 
     // ─── Time-series spend projections ───────────────────────────────────────
 
-    let computeSpendingByWeek (state: GroupState) : WeekSpend list =
+    let computeSpendingByWeek (state: SpaceState) : WeekSpend list =
         activeExpenses state
         |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e, amt))
         |> List.groupBy (fun (e, _) -> isoWeek e.Date)
@@ -197,7 +197,7 @@ module Projections =
               Total = xs |> List.sumBy snd })
         |> List.sortBy (fun w -> w.Year, w.Week)
 
-    let computeSpendingByMonth (state: GroupState) : MonthSpend list =
+    let computeSpendingByMonth (state: SpaceState) : MonthSpend list =
         activeExpenses state
         |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e, amt))
         |> List.groupBy (fun (e, _) -> e.Date.Year, e.Date.Month)
@@ -207,63 +207,3 @@ module Projections =
               Label = monthLabel year month
               Total = xs |> List.sumBy snd })
         |> List.sortBy (fun m -> m.Year, m.Month)
-
-    // ─── Context-scoped projections ───────────────────────────────────────────
-
-    let private contextExpenses (contextId: ContextId) (state: GroupState) : ExpenseState list =
-        activeExpenses state
-        |> List.filter (fun e -> e.ContextId = Some contextId)
-
-    let private contextMembers (ctx: ContextState) (state: GroupState) : Map<MemberId, Member> =
-        match ctx.Members with
-        | None      -> state.Members
-        | Some mids -> mids |> List.choose (fun id -> Map.tryFind id state.Members |> Option.map (fun m -> id, m)) |> Map.ofList
-
-    let computeContextNetPositions (contextId: ContextId) (state: GroupState) : NetPosition list =
-        match Map.tryFind contextId state.Contexts with
-        | None -> []
-        | Some ctx ->
-            let members = contextMembers ctx state
-            let init    = members |> Map.map (fun _ _ -> 0m)
-            let expenses = contextExpenses contextId state
-
-            let afterExpenses =
-                expenses
-                |> List.fold (fun pos expense ->
-                    match workingAmount expense state.Currency with
-                    | None -> pos
-                    | Some amt ->
-                        let shares = expandSplit amt expense.Split expense.PaidBy
-                        shares
-                        |> Map.toSeq
-                        |> Seq.filter (fun (m, _) -> m <> expense.PaidBy)
-                        |> Seq.fold (fun p (memberId, share) ->
-                            p |> addTo expense.PaidBy share |> addTo memberId -share
-                        ) pos
-                ) init
-
-            // Only include settlements between context members
-            let contextMemberSet = members |> Map.toSeq |> Seq.map fst |> Set.ofSeq
-            let afterSettlements =
-                state.Settlements
-                |> List.filter (fun s ->
-                    Set.contains s.From contextMemberSet && Set.contains s.To contextMemberSet)
-                |> List.fold (fun pos s ->
-                    match settlementWorkingAmount s state.Currency with
-                    | None     -> pos
-                    | Some amt -> pos |> addTo s.From amt |> addTo s.To -amt
-                ) afterExpenses
-
-            afterSettlements
-            |> Map.toList
-            |> List.map (fun (id, amt) -> { MemberId = id; Amount = amt })
-
-    let computeContextSpendingByCategory (contextId: ContextId) (state: GroupState) : CategorySpend list =
-        match Map.tryFind contextId state.Contexts with
-        | None -> []
-        | Some _ ->
-            contextExpenses contextId state
-            |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e.Category, amt))
-            |> List.groupBy (fun (cat, _) -> cat |> Option.defaultValue "Uncategorized")
-            |> List.map (fun (cat, xs) -> { Category = cat; Total = xs |> List.sumBy snd })
-            |> List.sortByDescending (fun c -> c.Total)

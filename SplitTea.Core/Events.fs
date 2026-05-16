@@ -2,7 +2,7 @@ namespace SplitTea.Core
 
 type EventEnvelope<'Payload> = {
     Id: EventId
-    GroupId: GroupId
+    SpaceId: SpaceId
     Sequence: int64
     ActorId: MemberId
     OccurredAt: System.DateTimeOffset
@@ -10,7 +10,7 @@ type EventEnvelope<'Payload> = {
     Payload: 'Payload
 }
 
-type GroupCreatedPayload = {
+type SpaceCreatedPayload = {
     Name: string
     Currency: CurrencyCode
     CreatedBy: MemberId
@@ -18,15 +18,6 @@ type GroupCreatedPayload = {
 
 type MemberAddedPayload = {
     Member: Member
-}
-
-type ContextCreatedPayload = {
-    ContextId : ContextId
-    Name      : string
-    Template  : ContextTemplate
-    Members   : MemberId list option  // None = all group members
-    DateFrom  : System.DateOnly option
-    DateTo    : System.DateOnly option
 }
 
 type ExpenseAddedPayload = {
@@ -40,7 +31,6 @@ type ExpenseAddedPayload = {
     Date         : System.DateOnly
     Category     : string option
     Notes        : string option
-    ContextId    : ContextId option
 }
 
 type ExpenseCorrectedPayload = {
@@ -54,7 +44,6 @@ type ExpenseCorrectedPayload = {
     Date              : System.DateOnly option
     Category          : string Patch
     Notes             : string Patch
-    ContextId         : ContextId Patch  // Clear = remove from context; SetTo = assign
     Reason            : string option
 }
 
@@ -74,10 +63,9 @@ type SettlementRecordedPayload = {
     Notes        : string option
 }
 
-type GroupEvent =
-    | GroupCreated       of EventEnvelope<GroupCreatedPayload>
+type SpaceEvent =
+    | SpaceCreated       of EventEnvelope<SpaceCreatedPayload>
     | MemberAdded        of EventEnvelope<MemberAddedPayload>
-    | ContextCreated     of EventEnvelope<ContextCreatedPayload>
     | ExpenseAdded       of EventEnvelope<ExpenseAddedPayload>
     | ExpenseCorrected   of EventEnvelope<ExpenseCorrectedPayload>
     | ExpenseDeleted     of EventEnvelope<ExpenseDeletedPayload>

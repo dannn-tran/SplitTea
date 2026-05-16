@@ -33,7 +33,7 @@ let private currencyOptions (groupCurrency: string) =
     let all = if List.contains groupCurrency commonCurrencies then commonCurrencies else groupCurrency :: commonCurrencies
     all |> List.map (fun c -> Html.option [ prop.value c; prop.text c ])
 
-let view (state: GroupState) (rates: Map<string, decimal>) (form: ExpenseForm) (dispatch: Msg -> unit) =
+let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (dispatch: Msg -> unit) =
     let members =
         state.Members
         |> Map.toList
@@ -54,7 +54,7 @@ let view (state: GroupState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                     Html.button [
                         prop.className "text-teal-600 hover:text-teal-800 text-sm font-medium"
                         prop.text "← Back"
-                        prop.onClick (fun _ -> dispatch (NavigateTo GroupOverview))
+                        prop.onClick (fun _ -> dispatch (NavigateTo SpaceOverview))
                     ]
                     Html.h1 [ prop.className "text-xl font-bold text-gray-900"; prop.text "Add Expense" ]
                 ]
@@ -154,20 +154,6 @@ let view (state: GroupState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                             prop.rows 2
                             prop.onChange (fun v -> set (fun f -> { f with Notes = v }))
                         ])
-                    let sortedContexts = state.Contexts |> Map.toList |> List.map snd |> List.sortBy (fun c -> c.Name)
-                    if not (List.isEmpty sortedContexts) then
-                        field "Context (optional)"
-                            (Html.select [
-                                prop.className inputCls
-                                prop.value (string form.ContextIndex)
-                                prop.onChange (fun (v: string) -> set (fun f -> { f with ContextIndex = int v }))
-                                prop.children (
-                                    Html.option [ prop.value "0"; prop.text "— None —" ]
-                                    :: (sortedContexts |> List.mapi (fun i c ->
-                                        Html.option [ prop.value (string (i + 1)); prop.text c.Name ]
-                                    ))
-                                )
-                            ])
                     match form.Error with
                     | Some err -> Html.p [ prop.className "text-sm text-red-600"; prop.text err ]
                     | None     -> ()

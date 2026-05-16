@@ -13,6 +13,7 @@ let isEnabled () =
 let fakeUserId = Guid.Parse "00000000-0000-0000-0000-000000000001"
 let fakeUserEmail = "dev@splittea.local"
 let fakeMemberName = "Local Tester"
+let fakeSpaceName = "Local Test Space"
 #else
 let isEnabled () = false
 #endif

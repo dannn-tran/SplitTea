@@ -52,7 +52,7 @@ let private amountWithCurrencyRow (amountText: string) (currency: string) (group
         ]
     ]
 
-let view (state: GroupState) (rates: Map<string, decimal>) (form: SettlementForm) (dispatch: Msg -> unit) =
+let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm) (dispatch: Msg -> unit) =
     let members =
         state.Members
         |> Map.toList
@@ -83,7 +83,7 @@ let view (state: GroupState) (rates: Map<string, decimal>) (form: SettlementForm
                     Html.button [
                         prop.className "text-teal-600 hover:text-teal-800 text-sm font-medium"
                         prop.text "← Back"
-                        prop.onClick (fun _ -> dispatch (NavigateTo GroupOverview))
+                        prop.onClick (fun _ -> dispatch (NavigateTo SpaceOverview))
                     ]
                     Html.h1 [ prop.className "text-xl font-bold text-gray-900"; prop.text "Record Settlement" ]
                 ]

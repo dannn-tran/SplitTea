@@ -8,7 +8,7 @@ open SplitTea.Core
 
 let private guidStr (g: System.Guid) = string g
 
-let private groupIdStr      (GroupId      g) = guidStr g
+let private spaceIdStr      (SpaceId      g) = guidStr g
 let private memberIdStr     (MemberId     g) = guidStr g
 let private expenseIdStr    (ExpenseId    g) = guidStr g
 let private settlementIdStr (SettlementId g) = guidStr g
@@ -17,7 +17,7 @@ let private eventIdStr      (EventId      g) = guidStr g
 let private parseMemberId     (s: string) = MemberId     (System.Guid.Parse s)
 let private parseExpenseId    (s: string) = ExpenseId    (System.Guid.Parse s)
 let private parseSettlementId (s: string) = SettlementId (System.Guid.Parse s)
-let private parseGroupId      (s: string) = GroupId      (System.Guid.Parse s)
+let private parseSpaceId      (s: string) = SpaceId      (System.Guid.Parse s)
 let private parseEventId      (s: string) = EventId      (System.Guid.Parse s)
 let private parseUserId       (s: string) = UserId       (System.Guid.Parse s)
 
@@ -89,25 +89,6 @@ let private decodePatch (decVal: obj -> 'a) (raw: obj) : 'a Patch =
     elif string raw = "__CLEAR__" then Clear
     else SetTo (decVal raw)
 
-// ─── ContextId / ContextTemplate encode ──────────────────────────────────────
-
-let private contextIdStr      (ContextId g) = guidStr g
-let private parseContextId    (s: string)   = ContextId (System.Guid.Parse s)
-
-let private encTemplate (t: ContextTemplate) : string =
-    match t with
-    | Trip    -> "Trip"
-    | Monthly -> "Monthly"
-    | Weekly  -> "Weekly"
-    | Custom  -> "Custom"
-
-let private decTemplate (s: string) : ContextTemplate =
-    match s with
-    | "Monthly" -> Monthly
-    | "Weekly"  -> Weekly
-    | "Custom"  -> Custom
-    | _         -> Trip  // default / forward-compat
-
 // ─── Member encode ────────────────────────────────────────────────────────────
 
 let private encMember (m: Member) : obj =
@@ -125,27 +106,17 @@ let private decMember (raw: obj) : Member = {
 
 // ─── Payload encode / decode ──────────────────────────────────────────────────
 
-let private encPayload (event: GroupEvent) : string * obj =
+let private encPayload (event: SpaceEvent) : string * obj =
     match event with
-    | GroupCreated env ->
+    | SpaceCreated env ->
         let p = env.Payload
-        "GroupCreated", createObj [
+        "SpaceCreated", createObj [
             "name"      ==> p.Name
             "currency"  ==> p.Currency
             "createdBy" ==> memberIdStr p.CreatedBy
         ]
     | MemberAdded env ->
         "MemberAdded", createObj [ "member" ==> encMember env.Payload.Member ]
-    | ContextCreated env ->
-        let p = env.Payload
-        "ContextCreated", createObj [
-            "contextId" ==> contextIdStr p.ContextId
-            "name"      ==> p.Name
-            "template"  ==> encTemplate p.Template
-            "members"   ==> (p.Members |> Option.map (fun ms -> ms |> List.map memberIdStr |> Array.ofList |> box) |> Option.toObj)
-            "dateFrom"  ==> (p.DateFrom |> Option.map dateStr |> Option.toObj)
-            "dateTo"    ==> (p.DateTo   |> Option.map dateStr |> Option.toObj)
-        ]
     | ExpenseAdded env ->
         let p = env.Payload
         "ExpenseAdded", createObj [
@@ -159,7 +130,6 @@ let private encPayload (event: GroupEvent) : string * obj =
             "date"         ==> dateStr p.Date
             "category"     ==> (p.Category  |> Option.toObj)
             "notes"        ==> (p.Notes     |> Option.toObj)
-            "contextId"    ==> (p.ContextId |> Option.map contextIdStr |> Option.toObj)
         ]
     | ExpenseCorrected env ->
         let p = env.Payload
@@ -174,7 +144,6 @@ let private encPayload (event: GroupEvent) : string * obj =
             "date"              ==> (p.Date          |> Option.map dateStr     |> Option.toObj)
             "category"          ==> encodePatch box p.Category
             "notes"             ==> encodePatch box p.Notes
-            "contextId"         ==> encodePatch (contextIdStr >> box) p.ContextId
             "reason"            ==> (p.Reason        |> Option.toObj)
         ]
     | ExpenseDeleted env ->
@@ -198,27 +167,26 @@ let private encPayload (event: GroupEvent) : string * obj =
 
 // ─── Envelope extraction ──────────────────────────────────────────────────────
 
-let private envFields (id: EventId) (gid: GroupId) (seq: int64) (aid: MemberId) (oat: System.DateTimeOffset) =
-    eventIdStr id, groupIdStr gid, float seq, memberIdStr aid, isoStr oat
+let private envFields (id: EventId) (sid: SpaceId) (seq: int64) (aid: MemberId) (oat: System.DateTimeOffset) =
+    eventIdStr id, spaceIdStr sid, float seq, memberIdStr aid, isoStr oat
 
-let private getEnvFields (event: GroupEvent) =
+let private getEnvFields (event: SpaceEvent) =
     match event with
-    | GroupCreated       e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
-    | MemberAdded        e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
-    | ContextCreated     e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
-    | ExpenseAdded       e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
-    | ExpenseCorrected   e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
-    | ExpenseDeleted     e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
-    | SettlementRecorded e -> envFields e.Id e.GroupId e.Sequence e.ActorId e.OccurredAt
+    | SpaceCreated       e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | MemberAdded        e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | ExpenseAdded       e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | ExpenseCorrected   e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | ExpenseDeleted     e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | SettlementRecorded e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
 
 // ─── Serialise to JS object ───────────────────────────────────────────────────
 
-let private toStored (event: GroupEvent) (synced: bool) : obj =
+let private toStored (event: SpaceEvent) (synced: bool) : obj =
     let (eid, gid, seq, aid, oat) = getEnvFields event
     let (eventType, payload)      = encPayload event
     createObj [
         "id"         ==> eid
-        "groupId"    ==> gid
+        "spaceId"    ==> gid
         "sequence"   ==> seq
         "actorId"    ==> aid
         "occurredAt" ==> oat
@@ -231,7 +199,7 @@ let private toStored (event: GroupEvent) (synced: bool) : obj =
 
 let private mkEnv<'P> (raw: obj) (payload: 'P) : EventEnvelope<'P> = {
     Id         = parseEventId  (string raw?id)
-    GroupId    = parseGroupId  (string raw?groupId)
+    SpaceId    = parseSpaceId  (string raw?spaceId)
     Sequence   = int64 (float raw?sequence)
     ActorId    = parseMemberId (string raw?actorId)
     OccurredAt = parseDte      (string raw?occurredAt)
@@ -248,29 +216,18 @@ let private eventSortKey (raw: obj) =
     else
         1, 0L, occurredAt, eventId
 
-let private fromStored (raw: obj) : GroupEvent option =
+let private fromStored (raw: obj) : SpaceEvent option =
     let p : obj = raw?payload
     try
         match string raw?eventType with
-        | "GroupCreated" ->
-            GroupCreated (mkEnv raw {
+        | "SpaceCreated" ->
+            SpaceCreated (mkEnv raw {
                 Name      = string p?name
                 Currency  = string p?currency
                 CreatedBy = parseMemberId (string p?createdBy)
             }) |> Some
         | "MemberAdded" ->
             MemberAdded (mkEnv raw { Member = decMember p?``member`` }) |> Some
-        | "ContextCreated" ->
-            ContextCreated (mkEnv raw {
-                ContextId = parseContextId (string p?contextId)
-                Name      = string p?name
-                Template  = decTemplate (string p?template)
-                Members   =
-                    if isNull p?members then None
-                    else Some (p?members |> unbox<string[]> |> Array.toList |> List.map parseMemberId)
-                DateFrom  = if isNull p?dateFrom then None else Some (parseDate (string p?dateFrom))
-                DateTo    = if isNull p?dateTo   then None else Some (parseDate (string p?dateTo))
-            }) |> Some
         | "ExpenseAdded" ->
             // Migration: old events stored amount/currency; new events store paidAmount/paidCurrency/exchangeRate
             let isLegacy = isNull p?paidAmount
@@ -285,7 +242,6 @@ let private fromStored (raw: obj) : GroupEvent option =
                 Date         = parseDate (string p?date)
                 Category     = if isNull p?category  then None else Some (string p?category)
                 Notes        = if isNull p?notes     then None else Some (string p?notes)
-                ContextId    = if isNull p?contextId then None else Some (parseContextId (string p?contextId))
             }) |> Some
         | "ExpenseCorrected" ->
             ExpenseCorrected (mkEnv raw {
@@ -299,7 +255,6 @@ let private fromStored (raw: obj) : GroupEvent option =
                 Date         = if isNull p?date         then None else Some (parseDate (string p?date))
                 Category     = decodePatch string p?category
                 Notes        = decodePatch string p?notes
-                ContextId    = decodePatch (fun o -> parseContextId (string o)) p?contextId
                 Reason       = if isNull p?reason       then None else Some (string p?reason)
             }) |> Some
         | "ExpenseDeleted" ->
@@ -323,12 +278,12 @@ let private fromStored (raw: obj) : GroupEvent option =
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-let saveEvent (event: GroupEvent) : Async<unit> =
+let saveEvent (event: SpaceEvent) : Async<unit> =
     IndexedDb.saveEvent (toStored event false)
 
-let loadGroupState (groupId: GroupId) : Async<GroupState> =
+let loadSpaceState (spaceId: SpaceId) : Async<SpaceState> =
     async {
-        let! raws = IndexedDb.getEventsByGroup (groupIdStr groupId)
+        let! raws = IndexedDb.getEventsBySpace (spaceIdStr spaceId)
         let events =
             raws
             |> Array.sortBy eventSortKey
@@ -337,14 +292,14 @@ let loadGroupState (groupId: GroupId) : Async<GroupState> =
         return Reducer.replayEvents events
     }
 
-let getPendingEvents () : Async<(GroupId * GroupEvent) list> =
+let getPendingEvents () : Async<(SpaceId * SpaceEvent) list> =
     async {
         let! raws = IndexedDb.getPendingEvents ()
         return
             raws
             |> Array.sortBy eventSortKey
             |> Array.choose (fun r ->
-                fromStored r |> Option.map (fun e -> parseGroupId (string r?groupId), e)
+                fromStored r |> Option.map (fun e -> parseSpaceId (string r?spaceId), e)
             )
             |> Array.toList
     }

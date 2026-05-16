@@ -9,12 +9,12 @@ let private openDB (name: string) (version: int) (options: obj) : JS.Promise<obj
 
 let private upgrade (db: obj) (_: int) (_: obj) (_: obj) (_: obj) : unit =
     let store : obj = db?createObjectStore("events", createObj [ "keyPath" ==> "id" ])
-    store?createIndex("groupId", "groupId", createObj [ "unique" ==> false ]) |> ignore
+    store?createIndex("spaceId", "spaceId", createObj [ "unique" ==> false ]) |> ignore
     store?createIndex("synced",  "synced",  createObj [ "unique" ==> false ]) |> ignore
 
 // Database handle — opened once when this module is first imported.
 let private db : JS.Promise<obj> =
-    openDB "splittea" 1 (createObj [ "upgrade" ==> upgrade ])
+    openDB "splittea-space" 1 (createObj [ "upgrade" ==> upgrade ])
 
 let saveEvent (event: obj) : Async<unit> =
     async {
@@ -23,10 +23,10 @@ let saveEvent (event: obj) : Async<unit> =
         ()
     }
 
-let getEventsByGroup (groupId: string) : Async<obj[]> =
+let getEventsBySpace (spaceId: string) : Async<obj[]> =
     async {
         let! db' = db |> Async.AwaitPromise
-        return! (db'?getAllFromIndex("events", "groupId", groupId) : JS.Promise<obj[]>) |> Async.AwaitPromise
+        return! (db'?getAllFromIndex("events", "spaceId", spaceId) : JS.Promise<obj[]>) |> Async.AwaitPromise
     }
 
 let getPendingEvents () : Async<obj[]> =

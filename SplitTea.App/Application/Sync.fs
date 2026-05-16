@@ -20,17 +20,17 @@ let pushPending () : Async<unit> =
                 | Error _  -> ()
     }
 
-// Subscribe to Supabase Realtime for a group.
+// Subscribe to Supabase Realtime for a space.
 // Each inbound INSERT is saved locally (marked synced=true) then onNewEvent () is called.
 // Returns an unsubscribe function.
-let subscribeGroup (groupId: GroupId) (onNewEvent: unit -> unit) : unit -> unit =
+let subscribeSpace (spaceId: SpaceId) (onNewEvent: unit -> unit) : unit -> unit =
 #if DEVMODE
     if DevMode.isEnabled () then
         fun () -> ()
     else
 #endif
-        let (GroupId g) = groupId
-        SupabaseSync.subscribeGroup (string g) (fun normalized ->
+        let (SpaceId g) = spaceId
+        SupabaseSync.subscribeSpace (string g) (fun normalized ->
             async {
                 do! IndexedDb.saveEvent normalized
                 onNewEvent ()

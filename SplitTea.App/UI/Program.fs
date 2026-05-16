@@ -9,16 +9,16 @@ open UITypes
 
 let private browserStorage : obj = emitJsExpr () "localStorage"
 
-let private getActiveGroupId () : GroupId option =
-    let v : obj = browserStorage?getItem("activeGroupId")
+let private getActiveSpaceId () : SpaceId option =
+    let v : obj = browserStorage?getItem("activeSpaceId")
     if isNull v then None
     else
-        try Some (GroupId (System.Guid.Parse (string v)))
+        try Some (SpaceId (System.Guid.Parse (string v)))
         with _ -> None
 
-let private setActiveGroupId (id: GroupId) =
-    let (GroupId g) = id
-    browserStorage?setItem("activeGroupId", string g) |> ignore
+let private setActiveSpaceId (id: SpaceId) =
+    let (SpaceId g) = id
+    browserStorage?setItem("activeSpaceId", string g) |> ignore
 
 let private todayStr () =
     let d = System.DateTime.Now
@@ -32,13 +32,13 @@ let private parseFormDate (s: string) =
         let parts = s.Split('-')
         System.DateOnly(int parts.[0], int parts.[1], int parts.[2])
 
-let private sortedMembers (state: GroupState) =
+let private sortedMembers (state: SpaceState) =
     state.Members
     |> Map.toList
     |> List.map snd
     |> List.sortBy (fun m -> m.DisplayName)
 
-let private findActorId (state: GroupState) (user: Auth.AuthUser option) : MemberId =
+let private findActorId (state: SpaceState) (user: Auth.AuthUser option) : MemberId =
     let first () = state.Members |> Map.toList |> List.head |> fst
     match user with
     | None -> first ()
@@ -50,15 +50,6 @@ let private findActorId (state: GroupState) (user: Auth.AuthUser option) : Membe
         |> Option.map fst
         |> Option.defaultWith first
 
-let private emptyContextForm () : ContextForm = {
-    Name         = ""
-    Template     = Trip
-    DateFromText = ""
-    DateToText   = ""
-    IsSubmitting = false
-    Error        = None
-}
-
 let private emptyExpenseForm (groupCurrency: string) : ExpenseForm = {
     Description      = ""
     AmountText       = ""
@@ -68,7 +59,6 @@ let private emptyExpenseForm (groupCurrency: string) : ExpenseForm = {
     DateText         = todayStr ()
     Category         = ""
     Notes            = ""
-    ContextIndex     = 0
     IsSubmitting     = false
     Error            = None
 }
@@ -90,23 +80,22 @@ let private emptySettlementForm (memberCount: int) (groupCurrency: string) : Set
 }
 
 let init () : Model * Cmd<Msg> =
-    let activeGroupId = getActiveGroupId ()
+    let activeSpaceId = getActiveSpaceId ()
     let model = {
         Auth           = None
         Page           = Loading
-        ActiveGroupId  = activeGroupId
-        GroupState     = GroupState.Empty
+        ActiveSpaceId  = activeSpaceId
+        SpaceState     = SpaceState.Empty
         ExchangeRates  = Map.empty
         SignInEmail    = ""
         SignInError    = None
         IsAuthLoading  = true
-        ContextForm    = emptyContextForm ()
         ExpenseForm    = emptyExpenseForm ""
         SettlementForm = emptySettlementForm 0 ""
     }
     let cmd =
-        match activeGroupId with
-        | Some gid -> Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupLoaded (gid, gs))
+        match activeSpaceId with
+        | Some sid -> Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
         | None     -> Cmd.none
     model, cmd
 
@@ -116,7 +105,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         let page =
             match model.Page with
             | Loading ->
-                if model.ActiveGroupId.IsSome then Loading
+                if model.ActiveSpaceId.IsSome then Loading
 #if DEVMODE
                 elif DevMode.isEnabled () then DevBootstrap
 #endif
@@ -134,20 +123,20 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with Auth = None; IsAuthLoading = false; Page = page }, Cmd.none
 
 #if DEVMODE
-    | CreateDevGroup ->
+    | CreateDevSpace ->
         let cmd =
             Cmd.OfAsync.either
-                DevBootstrap.createLocalGroup
+                DevBootstrap.createLocalSpace
                 ()
-                (fun gid -> DevGroupCreated (Ok gid))
-                (fun ex -> DevGroupCreated (Error ex.Message))
+                (fun sid -> DevSpaceCreated (Ok sid))
+                (fun ex -> DevSpaceCreated (Error ex.Message))
         { model with IsAuthLoading = true }, cmd
 
-    | DevGroupCreated (Ok gid) ->
-        let cmd = Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupLoaded (gid, gs))
+    | DevSpaceCreated (Ok sid) ->
+        let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
         { model with IsAuthLoading = false }, cmd
 
-    | DevGroupCreated (Error _) ->
+    | DevSpaceCreated (Error _) ->
         { model with IsAuthLoading = false }, Cmd.none
 #endif
 
@@ -172,87 +161,48 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         let cmd = Cmd.OfAsync.attempt (fun () -> Auth.signOut ()) () (fun _ -> AuthReceived Auth.SignedOut)
         model, cmd
 
-    | GroupLoaded (gid, gs) ->
-        setActiveGroupId gid
+    | SpaceLoaded (sid, ss) ->
+        setActiveSpaceId sid
         let syncCmd = Cmd.OfAsync.attempt (fun () -> Sync.pushPending ()) () (fun _ -> SyncDone)
         let fxCmd   =
             Cmd.OfAsync.either
-                (fun () -> FxRates.getRates gs.Currency)
+                (fun () -> FxRates.getRates ss.Currency)
                 ()
                 ExchangeRatesLoaded
                 (fun _ -> ExchangeRatesLoaded Map.empty)
-        { model with ActiveGroupId = Some gid; GroupState = gs; Page = GroupOverview }, Cmd.batch [ syncCmd; fxCmd ]
+        { model with ActiveSpaceId = Some sid; SpaceState = ss; Page = SpaceOverview }, Cmd.batch [ syncCmd; fxCmd ]
 
     | ExchangeRatesLoaded rates ->
         { model with ExchangeRates = rates }, Cmd.none
 
-    | CreateContextClick ->
-        { model with Page = CreateContext; ContextForm = emptyContextForm () }, Cmd.none
-
-    | ContextFormSet form ->
-        { model with ContextForm = form }, Cmd.none
-
-    | ContextSubmit ->
-        match model.ActiveGroupId with
-        | None -> model, Cmd.none
-        | Some gid ->
-            let form = model.ContextForm
-            if form.Name.Trim() = "" then
-                { model with ContextForm = { form with Error = Some "Name is required." } }, Cmd.none
-            else
-                let actorId  = findActorId model.GroupState model.Auth
-                let dateFrom = if form.DateFromText = "" then None else try Some (parseFormDate form.DateFromText) with _ -> None
-                let dateTo   = if form.DateToText   = "" then None else try Some (parseFormDate form.DateToText)   with _ -> None
-                let cmd =
-                    Cmd.OfAsync.either
-                        (fun () -> Commands.createContext gid actorId (form.Name.Trim()) form.Template None dateFrom dateTo)
-                        ()
-                        (fun () -> ContextSaved (Ok ()))
-                        (fun ex  -> ContextSaved (Error ex.Message))
-                { model with ContextForm = { form with IsSubmitting = true; Error = None } }, cmd
-
-    | ContextSaved (Ok ()) ->
-        match model.ActiveGroupId with
-        | Some gid ->
-            let cmd = Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupLoaded (gid, gs))
-            { model with ContextForm = { model.ContextForm with IsSubmitting = false } }, cmd
-        | None ->
-            { model with Page = GroupOverview }, Cmd.none
-
-    | ContextSaved (Error err) ->
-        { model with ContextForm = { model.ContextForm with IsSubmitting = false; Error = Some err } }, Cmd.none
-
-    | OpenContext contextId ->
-        { model with Page = ContextDetail contextId }, Cmd.none
-
-    | GroupNotFound ->
+    | SpaceNotFound ->
         { model with Page = SignIn }, Cmd.none
 
     | NavigateTo page ->
         { model with Page = page }, Cmd.none
 
     | AddExpenseClick ->
-        let cur = model.GroupState.Currency
+        let cur = model.SpaceState.Currency
         { model with Page = AddExpense; ExpenseForm = emptyExpenseForm cur }, Cmd.none
 
     | RecordSettlementClick ->
-        let n   = model.GroupState.Members.Count
-        let cur = model.GroupState.Currency
+        let n   = model.SpaceState.Members.Count
+        let cur = model.SpaceState.Currency
         { model with Page = RecordSettlement; SettlementForm = emptySettlementForm n cur }, Cmd.none
 
     | ExpenseFormSet form ->
         { model with ExpenseForm = form }, Cmd.none
 
     | ExpenseSubmit ->
-        match model.ActiveGroupId with
+        match model.ActiveSpaceId with
         | None -> model, Cmd.none
-        | Some gid ->
-            let members  = sortedMembers model.GroupState
+        | Some sid ->
+            let members  = sortedMembers model.SpaceState
             let form     = model.ExpenseForm
             let paidBy   = members |> List.tryItem form.PaidByIndex |> Option.map (fun m -> m.Id)
             let amtOpt   = try Some (decimal form.AmountText) with _ -> None
             let rateOpt  =
-                if form.Currency = model.GroupState.Currency || form.ExchangeRateText.Trim() = "" then Ok None
+                if form.Currency = model.SpaceState.Currency || form.ExchangeRateText.Trim() = "" then Ok None
                 else
                     try Ok (Some (decimal form.ExchangeRateText))
                     with _ -> Error "Invalid exchange rate."
@@ -262,23 +212,19 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             | Some paidById, Some amount, Ok rateOpt' ->
                 if amount <= 0m then
                     { model with ExpenseForm = { form with Error = Some "Amount must be positive." } }, Cmd.none
-                elif form.Currency <> model.GroupState.Currency && rateOpt' = None then
+                elif form.Currency <> model.SpaceState.Currency && rateOpt' = None then
                     { model with ExpenseForm = { form with Error = Some "Exchange rate required for foreign currency." } }, Cmd.none
                 elif form.Description.Trim() = "" then
                     { model with ExpenseForm = { form with Error = Some "Description is required." } }, Cmd.none
                 else
-                    let actorId  = findActorId model.GroupState model.Auth
+                    let actorId  = findActorId model.SpaceState model.Auth
                     let split    = Equal (members |> List.map (fun m -> m.Id))
                     let date     = parseFormDate form.DateText
                     let category = if form.Category = "" then None else Some form.Category
                     let notes    = if form.Notes.Trim() = "" then None else Some (form.Notes.Trim())
-                    let sortedContexts = model.GroupState.Contexts |> Map.toList |> List.map snd |> List.sortBy (fun c -> c.Name)
-                    let contextId =
-                        if form.ContextIndex = 0 then None
-                        else sortedContexts |> List.tryItem (form.ContextIndex - 1) |> Option.map (fun c -> c.ContextId)
                     let cmd =
                         Cmd.OfAsync.either
-                            (fun () -> Commands.addExpense gid actorId form.Description amount form.Currency rateOpt' paidById split date category notes contextId)
+                            (fun () -> Commands.addExpense sid actorId form.Description amount form.Currency rateOpt' paidById split date category notes)
                             ()
                             (fun () -> ExpenseSaved (Ok ()))
                             (fun ex  -> ExpenseSaved (Error ex.Message))
@@ -289,12 +235,12 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 { model with ExpenseForm = { form with Error = Some "Please select who paid." } }, Cmd.none
 
     | ExpenseSaved (Ok ()) ->
-        match model.ActiveGroupId with
-        | Some gid ->
-            let cmd = Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupLoaded (gid, gs))
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
             { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false } }, cmd
         | None ->
-            { model with Page = GroupOverview }, Cmd.none
+            { model with Page = SpaceOverview }, Cmd.none
 
     | ExpenseSaved (Error err) ->
         { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false; Error = Some err } }, Cmd.none
@@ -303,12 +249,12 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with SettlementForm = form }, Cmd.none
 
     | SettlementSubmit ->
-        match model.ActiveGroupId with
+        match model.ActiveSpaceId with
         | None -> model, Cmd.none
-        | Some gid ->
-            let members   = sortedMembers model.GroupState
+        | Some sid ->
+            let members   = sortedMembers model.SpaceState
             let form      = model.SettlementForm
-            let groupCur  = model.GroupState.Currency
+            let groupCur  = model.SpaceState.Currency
             let fromOpt   = members |> List.tryItem form.FromIndex |> Option.map (fun m -> m.Id)
             let toOpt     = members |> List.tryItem form.ToIndex   |> Option.map (fun m -> m.Id)
             let amtOpt    = try Some (decimal form.AmountText) with _ -> None
@@ -334,14 +280,14 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 elif form.UseSecondPayment && form.Currency2 <> groupCur && rate2 = None then
                     { model with SettlementForm = { form with Error = Some "Exchange rate required for second currency." } }, Cmd.none
                 else
-                    let actorId = findActorId model.GroupState model.Auth
+                    let actorId = findActorId model.SpaceState model.Auth
                     let date    = parseFormDate form.DateText
                     let notes   = if form.Notes.Trim() = "" then None else Some (form.Notes.Trim())
-                    let save1 = Commands.recordSettlement gid actorId fromId toId amount form.Currency rate date notes
+                    let save1 = Commands.recordSettlement sid actorId fromId toId amount form.Currency rate date notes
                     let save2 =
                         match form.UseSecondPayment, amt2 with
                         | true, Some a2 when a2 > 0m ->
-                            Commands.recordSettlement gid actorId fromId toId a2 form.Currency2 rate2 date notes
+                            Commands.recordSettlement sid actorId fromId toId a2 form.Currency2 rate2 date notes
                         | _ -> async { return () }
                     let saveAll () = async {
                         do! save1
@@ -358,21 +304,21 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 { model with SettlementForm = { form with Error = Some "Please select both members." } }, Cmd.none
 
     | SettlementSaved (Ok ()) ->
-        match model.ActiveGroupId with
-        | Some gid ->
-            let cmd = Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupLoaded (gid, gs))
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
             { model with SettlementForm = { model.SettlementForm with IsSubmitting = false } }, cmd
         | None ->
-            { model with Page = GroupOverview }, Cmd.none
+            { model with Page = SpaceOverview }, Cmd.none
 
     | SettlementSaved (Error err) ->
         { model with SettlementForm = { model.SettlementForm with IsSubmitting = false; Error = Some err } }, Cmd.none
 
-    | GroupStateUpdated gs ->
-        { model with GroupState = gs }, Cmd.none
+    | SpaceStateUpdated ss ->
+        { model with SpaceState = ss }, Cmd.none
 
-    | RemoteEventReceived gid ->
-        let cmd = Cmd.OfAsync.perform Storage.loadGroupState gid (fun gs -> GroupStateUpdated gs)
+    | RemoteEventReceived sid ->
+        let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceStateUpdated ss)
         model, cmd
 
     | SyncDone ->
@@ -385,12 +331,12 @@ let subscribe (model: Model) : Sub<Msg> =
 
     let baseSubs = [ ["auth"], authSub ]
 
-    match model.ActiveGroupId with
+    match model.ActiveSpaceId with
     | None -> baseSubs
-    | Some gid ->
-        let (GroupId g) = gid
+    | Some sid ->
+        let (SpaceId g) = sid
         let realtimeSub (dispatch: Msg -> unit) =
-            let unsub = Sync.subscribeGroup gid (fun () -> dispatch (RemoteEventReceived gid))
+            let unsub = Sync.subscribeSpace sid (fun () -> dispatch (RemoteEventReceived sid))
             { new System.IDisposable with member _.Dispose() = unsub () }
         baseSubs @ [ ["realtime"; string g], realtimeSub ]
 
@@ -449,13 +395,13 @@ let private devBootstrapView (model: Model) (dispatch: Msg -> unit) =
                         prop.children [
                             Html.p [
                                 prop.className "text-sm text-gray-600"
-                                prop.text "Dev mode is active. Create a local-only test group stored in IndexedDB."
+                                prop.text "Dev mode is active. Create a local-only test space stored in IndexedDB."
                             ]
                             Html.button [
                                 prop.className "w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg transition-colors"
                                 prop.disabled model.IsAuthLoading
-                                prop.text (if model.IsAuthLoading then "Creating..." else "Create Local Test Group")
-                                prop.onClick (fun _ -> dispatch CreateDevGroup)
+                                prop.text (if model.IsAuthLoading then "Creating..." else "Create Local Test Space")
+                                prop.onClick (fun _ -> dispatch CreateDevSpace)
                             ]
                         ]
                     ]
@@ -480,9 +426,7 @@ let view (model: Model) (dispatch: Msg -> unit) =
 #if DEVMODE
     | DevBootstrap        -> devBootstrapView model dispatch
 #endif
-    | GroupOverview       -> GroupPage.view model.GroupState dispatch
-    | AddExpense          -> ExpenseFormPage.view model.GroupState model.ExchangeRates model.ExpenseForm dispatch
-    | RecordSettlement    -> SettlementFormPage.view model.GroupState model.ExchangeRates model.SettlementForm dispatch
+    | SpaceOverview       -> SpacePage.view model.SpaceState dispatch
+    | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm dispatch
+    | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
     | Analytics           -> loadingView ()  // placeholder until analytics page is built
-    | CreateContext       -> ContextFormPage.view model.GroupState model.ContextForm dispatch
-    | ContextDetail ctxId -> ContextDetailPage.view model.GroupState ctxId dispatch

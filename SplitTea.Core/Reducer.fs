@@ -11,63 +11,40 @@ type ExpenseState = {
     Date         : System.DateOnly
     Category     : string option
     Notes        : string option
-    ContextId    : ContextId option
     IsDeleted    : bool
 }
 
-type ContextState = {
-    ContextId : ContextId
-    Name      : string
-    Template  : ContextTemplate
-    Members   : MemberId list option
-    DateFrom  : System.DateOnly option
-    DateTo    : System.DateOnly option
-}
-
-type GroupState = {
-    GroupId     : GroupId
+type SpaceState = {
+    SpaceId     : SpaceId
     Name        : string
     Currency    : CurrencyCode
     Members     : Map<MemberId, Member>
-    Contexts    : Map<ContextId, ContextState>
     Expenses    : Map<ExpenseId, ExpenseState>
     Settlements : SettlementRecordedPayload list
 }
 
-module GroupState =
+module SpaceState =
     let Empty = {
-        GroupId     = GroupId System.Guid.Empty
+        SpaceId     = SpaceId System.Guid.Empty
         Name        = ""
         Currency    = ""
         Members     = Map.empty
-        Contexts    = Map.empty
         Expenses    = Map.empty
         Settlements = []
     }
 
 module Reducer =
-    let reduce (state: GroupState) (event: GroupEvent) : GroupState =
+    let reduce (state: SpaceState) (event: SpaceEvent) : SpaceState =
         match event with
-        | GroupCreated e ->
+        | SpaceCreated e ->
             let p = e.Payload
-            { GroupState.Empty with
-                GroupId  = e.GroupId
+            { SpaceState.Empty with
+                SpaceId  = e.SpaceId
                 Name     = p.Name
                 Currency = p.Currency }
         | MemberAdded e ->
             let m = e.Payload.Member
             { state with Members = Map.add m.Id m state.Members }
-        | ContextCreated e ->
-            let p = e.Payload
-            let ctx = {
-                ContextId = p.ContextId
-                Name      = p.Name
-                Template  = p.Template
-                Members   = p.Members
-                DateFrom  = p.DateFrom
-                DateTo    = p.DateTo
-            }
-            { state with Contexts = Map.add p.ContextId ctx state.Contexts }
         | ExpenseAdded e ->
             let p = e.Payload
             let expense = {
@@ -81,7 +58,6 @@ module Reducer =
                 Date         = p.Date
                 Category     = p.Category
                 Notes        = p.Notes
-                ContextId    = p.ContextId
                 IsDeleted    = false
             }
             { state with Expenses = Map.add p.ExpenseId expense state.Expenses }
@@ -105,7 +81,6 @@ module Reducer =
                         Date         = p.Date         |> Option.defaultValue existing.Date
                         Category     = applyPatch existing.Category p.Category
                         Notes        = applyPatch existing.Notes    p.Notes
-                        ContextId    = applyPatch existing.ContextId p.ContextId
                 }
                 { state with Expenses = Map.add p.OriginalExpenseId corrected state.Expenses }
         | ExpenseDeleted e ->
@@ -117,5 +92,5 @@ module Reducer =
         | SettlementRecorded e ->
             { state with Settlements = state.Settlements @ [ e.Payload ] }
 
-    let replayEvents (events: GroupEvent list) : GroupState =
-        List.fold reduce GroupState.Empty events
+    let replayEvents (events: SpaceEvent list) : SpaceState =
+        List.fold reduce SpaceState.Empty events

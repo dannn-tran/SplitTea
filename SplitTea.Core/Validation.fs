@@ -52,16 +52,11 @@ module Validation =
                     |> List.distinct
                 memberErrs @ shareErrs
 
-    let validateEvent (state: GroupState) (event: GroupEvent) : Result<GroupEvent, ValidationError list> =
+    let validateEvent (state: SpaceState) (event: SpaceEvent) : Result<SpaceEvent, ValidationError list> =
         let errors =
             match event with
-            | GroupCreated _ -> []
+            | SpaceCreated _ -> []
             | MemberAdded _ -> []
-            | ContextCreated e ->
-                let p = e.Payload
-                match p.Members with
-                | None      -> []
-                | Some mids -> mids |> List.collect (checkMember state.Members)
             | ExpenseAdded e ->
                 let p = e.Payload
                 checkAmount p.PaidAmount

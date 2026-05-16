@@ -9,7 +9,7 @@ open SupabaseClient
 let private toSupabase (local: obj) : obj =
     createObj [
         "id"          ==> local?id
-        "group_id"    ==> local?groupId
+        "space_id"    ==> local?spaceId
         "actor_id"    ==> local?actorId
         "occurred_at" ==> local?occurredAt
         "event_type"  ==> local?eventType
@@ -21,7 +21,7 @@ let private toSupabase (local: obj) : obj =
 let private fromSupabase (remote: obj) : obj =
     createObj [
         "id"         ==> remote?id
-        "groupId"    ==> remote?group_id
+        "spaceId"    ==> remote?space_id
         "sequence"   ==> remote?sequence
         "actorId"    ==> remote?actor_id
         "occurredAt" ==> remote?occurred_at
@@ -42,11 +42,11 @@ let pushEvent (local: obj) : Async<Result<unit, string>> =
     }
 
 // Returns an unsubscribe function.
-let subscribeGroup (groupId: string) (onEvent: obj -> unit) : unit -> unit =
-    let filter  = sprintf "group_id=eq.%s" groupId
+let subscribeSpace (spaceId: string) (onEvent: obj -> unit) : unit -> unit =
+    let filter  = sprintf "space_id=eq.%s" spaceId
     let channel =
         supabase
-            ?channel(sprintf "events:%s" groupId)
+            ?channel(sprintf "events:%s" spaceId)
             ?on(
                 "postgres_changes",
                 createObj [
