@@ -66,3 +66,4 @@ dist/
 # Fable compiled output
 output/
 .fable/
+*.fs.js
