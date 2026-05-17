@@ -49,9 +49,17 @@ module Reducer =
                 Name       = p.Name
                 Currency   = p.Currency
                 Categories = categories }
+        | SpaceRenamed e ->
+            { state with Name = e.Payload.NewName.Trim() }
         | MemberAdded e ->
             let m = e.Payload.Member
             { state with Members = Map.add m.Id m state.Members }
+        | MemberRenamed e ->
+            let p = e.Payload
+            match Map.tryFind p.MemberId state.Members with
+            | None -> state
+            | Some m ->
+                { state with Members = Map.add p.MemberId { m with DisplayName = p.NewName.Trim() } state.Members }
         | CategoryAdded e ->
             let name = e.Payload.Name.Trim()
             if name = "" then state

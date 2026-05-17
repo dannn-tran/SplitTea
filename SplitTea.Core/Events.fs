@@ -34,6 +34,15 @@ type CategoryArchivedPayload = {
     Name: string
 }
 
+type SpaceRenamedPayload = {
+    NewName: string
+}
+
+type MemberRenamedPayload = {
+    MemberId: MemberId
+    NewName: string
+}
+
 type ExpenseAddedPayload = {
     ExpenseId    : ExpenseId
     Description  : string
@@ -79,7 +88,9 @@ type SettlementRecordedPayload = {
 
 type SpaceEvent =
     | SpaceCreated       of EventEnvelope<SpaceCreatedPayload>
+    | SpaceRenamed       of EventEnvelope<SpaceRenamedPayload>
     | MemberAdded        of EventEnvelope<MemberAddedPayload>
+    | MemberRenamed      of EventEnvelope<MemberRenamedPayload>
     | CategoryAdded      of EventEnvelope<CategoryAddedPayload>
     | CategoryRenamed    of EventEnvelope<CategoryRenamedPayload>
     | CategoryArchived   of EventEnvelope<CategoryArchivedPayload>

@@ -109,5 +109,7 @@ module Validation =
             | CategoryAdded _ -> []
             | CategoryRenamed _ -> []
             | CategoryArchived _ -> []
+            | SpaceRenamed _ -> []
+            | MemberRenamed _ -> []
 
         if List.isEmpty errors then Ok event else Error errors

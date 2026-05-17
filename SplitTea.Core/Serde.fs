@@ -142,6 +142,12 @@ let private encCategoryRenamed (p: CategoryRenamedPayload) =
 let private encCategoryArchived (p: CategoryArchivedPayload) =
     Encode.object [ "name", Encode.string p.Name ]
 
+let private encSpaceRenamed (p: SpaceRenamedPayload) =
+    Encode.object [ "newName", Encode.string p.NewName ]
+
+let private encMemberRenamed (p: MemberRenamedPayload) =
+    Encode.object [ "memberId", encMemberId p.MemberId; "newName", Encode.string p.NewName ]
+
 let private encExpenseAdded (p: ExpenseAddedPayload) =
     Encode.object [
         "expenseId",    encExpenseId p.ExpenseId
@@ -213,6 +219,15 @@ let private decCategoryRenamed =
 
 let private decCategoryArchived =
     Decode.object (fun get -> { Name = get.Required.Field "name" Decode.string } : CategoryArchivedPayload)
+
+let private decSpaceRenamed =
+    Decode.object (fun get -> { NewName = get.Required.Field "newName" Decode.string } : SpaceRenamedPayload)
+
+let private decMemberRenamed =
+    Decode.object (fun get -> {
+        MemberId = get.Required.Field "memberId" decMemberId
+        NewName  = get.Required.Field "newName"  Decode.string
+    })
 
 let private decExpenseAdded =
     Decode.object (fun get -> {
@@ -305,7 +320,9 @@ let encodeEvent (event: SpaceEvent) =
         encEnvFields env.Id env.SpaceId env.Sequence env.ActorId env.OccurredAt
     match event with
     | SpaceCreated       e -> mkEvent "SpaceCreated"       (fields e) (encSpaceCreated       e.Payload)
+    | SpaceRenamed       e -> mkEvent "SpaceRenamed"       (fields e) (encSpaceRenamed       e.Payload)
     | MemberAdded        e -> mkEvent "MemberAdded"        (fields e) (encMemberAdded        e.Payload)
+    | MemberRenamed      e -> mkEvent "MemberRenamed"      (fields e) (encMemberRenamed      e.Payload)
     | CategoryAdded      e -> mkEvent "CategoryAdded"      (fields e) (encCategoryAdded      e.Payload)
     | CategoryRenamed    e -> mkEvent "CategoryRenamed"    (fields e) (encCategoryRenamed    e.Payload)
     | CategoryArchived   e -> mkEvent "CategoryArchived"   (fields e) (encCategoryArchived   e.Payload)
@@ -318,7 +335,9 @@ let decodeEvent =
     Decode.field "eventType" Decode.string
     |> Decode.andThen (function
         | "SpaceCreated"       -> decEnvFields decSpaceCreated       SpaceCreated
+        | "SpaceRenamed"       -> decEnvFields decSpaceRenamed       SpaceRenamed
         | "MemberAdded"        -> decEnvFields decMemberAdded        MemberAdded
+        | "MemberRenamed"      -> decEnvFields decMemberRenamed      MemberRenamed
         | "CategoryAdded"      -> decEnvFields decCategoryAdded      CategoryAdded
         | "CategoryRenamed"    -> decEnvFields decCategoryRenamed    CategoryRenamed
         | "CategoryArchived"   -> decEnvFields decCategoryArchived   CategoryArchived

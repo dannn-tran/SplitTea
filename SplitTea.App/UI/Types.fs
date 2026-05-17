@@ -9,9 +9,10 @@ type Page =
     | DevBootstrap
 #endif
     | SpaceOverview
+    | Analytics
+    | Profile
     | AddExpense
     | RecordSettlement
-    | Analytics
 
 type SplitMode = EqualSplit | CustomSplit
 
@@ -50,27 +51,31 @@ type SettlementForm = {
 }
 
 type Model = {
-    Auth             : Auth.AuthUser option
-    Page             : Page
-    ActiveSpaceId    : SpaceId option
-    SpaceState       : SpaceState
-    CategoryFilter   : string
-    NewCategory      : string
-    EditingCategory  : string option
-    EditCategoryName : string
-    CategoryError    : string option
-    EditingExpenseId : ExpenseId option
-    ExchangeRates    : Map<string, decimal>
-    SignInEmail      : string
-    SignInError      : string option
-    IsAuthLoading    : bool
-    ExpenseForm      : ExpenseForm
-    SettlementForm   : SettlementForm
-    Toast            : string option
-    ShowSettings     : bool
-    ShowAnalytics    : bool
+    Auth                 : Auth.AuthUser option
+    Page                 : Page
+    ActiveSpaceId        : SpaceId option
+    SpaceState           : SpaceState
+    CategoryFilter       : string
+    NewCategory          : string
+    EditingCategory      : string option
+    EditCategoryName     : string
+    CategoryError        : string option
+    EditingExpenseId     : ExpenseId option
+    ExchangeRates        : Map<string, decimal>
+    SignInEmail          : string
+    SignInError          : string option
+    IsAuthLoading        : bool
+    ExpenseForm          : ExpenseForm
+    SettlementForm       : SettlementForm
+    Toast                : string option
+    ShowSettings         : bool
+    IsEditingSpaceName   : bool
+    SpaceNameText        : string
+    IsEditingProfileName : bool
+    ProfileNameText      : string
+    ProfileNameError     : string option
 #if DEVMODE
-    DevActorId       : MemberId option
+    DevActorId           : MemberId option
 #endif
 }
 
@@ -116,7 +121,14 @@ type Msg =
     | ExchangeRatesLoaded      of Map<string, decimal>
     | ToastCleared
     | SettingsToggled
-    | AnalyticsToggled
+    | StartSpaceRename
+    | SpaceNameTextSet   of string
+    | SaveSpaceRename
+    | SpaceNameSaved     of Result<unit, string>
+    | StartProfileRename
+    | ProfileNameTextSet of string
+    | SaveProfileRename
+    | ProfileNameSaved   of Result<unit, string>
 #if DEVMODE
     | DevActorSet              of MemberId
     | DevReset

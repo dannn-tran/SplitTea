@@ -52,6 +52,14 @@ let addExpense
     })
     |> Storage.saveEvent
 
+let renameSpace (spaceId: SpaceId) (actorId: MemberId) (newName: string) : Async<unit> =
+    SpaceRenamed (mkEnvelope spaceId actorId { NewName = newName.Trim() })
+    |> Storage.saveEvent
+
+let renameMember (spaceId: SpaceId) (actorId: MemberId) (memberId: MemberId) (newName: string) : Async<unit> =
+    MemberRenamed (mkEnvelope spaceId actorId { MemberId = memberId; NewName = newName.Trim() })
+    |> Storage.saveEvent
+
 let addCategory
     (spaceId: SpaceId)
     (actorId: MemberId)

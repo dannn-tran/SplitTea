@@ -124,9 +124,13 @@ let init () : Model * Cmd<Msg> =
         IsAuthLoading  = true
         ExpenseForm    = emptyExpenseForm "" 0
         SettlementForm = emptySettlementForm 0 ""
-        Toast          = None
-        ShowSettings   = false
-        ShowAnalytics  = false
+        Toast                = None
+        ShowSettings         = false
+        IsEditingSpaceName   = false
+        SpaceNameText        = ""
+        IsEditingProfileName = false
+        ProfileNameText      = ""
+        ProfileNameError     = None
 #if DEVMODE
         DevActorId     = getDevActorId ()
 #endif
@@ -607,10 +611,82 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with Toast = None }, Cmd.none
 
     | SettingsToggled ->
-        { model with ShowSettings = not model.ShowSettings }, Cmd.none
+        if model.ShowSettings then
+            { model with ShowSettings = false
+                         IsEditingSpaceName = false; SpaceNameText = ""
+                         EditingCategory = None; EditCategoryName = "" }, Cmd.none
+        else
+            { model with ShowSettings = true }, Cmd.none
 
-    | AnalyticsToggled ->
-        { model with ShowAnalytics = not model.ShowAnalytics }, Cmd.none
+    | StartSpaceRename ->
+        { model with IsEditingSpaceName = true; SpaceNameText = model.SpaceState.Name }, Cmd.none
+
+    | SpaceNameTextSet text ->
+        { model with SpaceNameText = text }, Cmd.none
+
+    | SaveSpaceRename ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let name = model.SpaceNameText.Trim()
+            if name = "" || name = model.SpaceState.Name then
+                { model with IsEditingSpaceName = false }, Cmd.none
+            else
+                let actorId = resolveActor model
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.renameSpace sid actorId name)
+                        ()
+                        (fun () -> SpaceNameSaved (Ok ()))
+                        (fun ex -> SpaceNameSaved (Error ex.Message))
+                model, cmd
+
+    | SpaceNameSaved (Ok ()) ->
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            { model with IsEditingSpaceName = false; SpaceNameText = "" }, cmd
+        | None -> { model with IsEditingSpaceName = false }, Cmd.none
+
+    | SpaceNameSaved (Error _) ->
+        { model with IsEditingSpaceName = false }, Cmd.none
+
+    | StartProfileRename ->
+        let name = resolveActor model
+                   |> fun id -> model.SpaceState.Members |> Map.tryFind id
+                   |> Option.map _.DisplayName
+                   |> Option.defaultValue ""
+        { model with IsEditingProfileName = true; ProfileNameText = name; ProfileNameError = None }, Cmd.none
+
+    | ProfileNameTextSet text ->
+        { model with ProfileNameText = text; ProfileNameError = None }, Cmd.none
+
+    | SaveProfileRename ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let name = model.ProfileNameText.Trim()
+            if name = "" then
+                { model with ProfileNameError = Some "Name is required." }, Cmd.none
+            else
+                let actorId = resolveActor model
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.renameMember sid actorId actorId name)
+                        ()
+                        (fun () -> ProfileNameSaved (Ok ()))
+                        (fun ex -> ProfileNameSaved (Error ex.Message))
+                { model with ProfileNameError = None }, cmd
+
+    | ProfileNameSaved (Ok ()) ->
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            { model with IsEditingProfileName = false; ProfileNameText = "" }, cmd
+        | None -> { model with IsEditingProfileName = false }, Cmd.none
+
+    | ProfileNameSaved (Error err) ->
+        { model with ProfileNameError = Some err }, Cmd.none
 
 #if DEVMODE
     | DevActorSet memberId ->
@@ -772,7 +848,46 @@ let private devActorBadge (model: Model) (dispatch: Msg -> unit) =
     ]
 #endif
 
+let private navTab (label: string) (icon: ReactElement) (active: bool) (onClick: unit -> unit) =
+    Html.button [
+        prop.type' "button"
+        prop.className (
+            Styles.cx [
+                "flex-1 flex flex-col items-center gap-1 py-2 text-xs font-medium transition-colors"
+                if active then "text-teal-600" else "text-gray-400 hover:text-gray-600"
+            ])
+        prop.onClick (fun _ -> onClick ())
+        prop.children [
+            icon
+            Html.span [ prop.text label ]
+        ]
+    ]
+
+
+let private bottomNav (model: Model) (dispatch: Msg -> unit) =
+    Html.div [
+        prop.className "fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40"
+        prop.children [
+            Html.div [
+                prop.className "max-w-lg mx-auto flex"
+                prop.children [
+                    navTab "Home"      Icons.home   (model.Page = SpaceOverview) (fun () -> dispatch (NavigateTo SpaceOverview))
+                    navTab "Analytics" Icons.chart (model.Page = Analytics)     (fun () -> dispatch (NavigateTo Analytics))
+                    navTab "Profile"   Icons.person (model.Page = Profile)      (fun () -> dispatch (NavigateTo Profile))
+                ]
+            ]
+        ]
+    ]
+
 let view (model: Model) (dispatch: Msg -> unit) =
+    let isSpaceTab = model.Page = SpaceOverview || model.Page = Analytics || model.Page = Profile
+
+    let currentMember =
+        if isSpaceTab then
+            let actorId = resolveActor model
+            model.SpaceState.Members |> Map.tryFind actorId
+        else None
+
     let inner =
         match model.Page with
         | Loading             -> loadingView ()
@@ -781,9 +896,13 @@ let view (model: Model) (dispatch: Msg -> unit) =
         | DevBootstrap        -> devBootstrapView model dispatch
 #endif
         | SpaceOverview       -> SpacePage.view model.SpaceState model dispatch
+        | Analytics           -> AnalyticsPage.view model.SpaceState
+        | Profile             ->
+            let displayName = currentMember |> Option.map _.DisplayName |> Option.defaultValue ""
+            let email       = model.Auth |> Option.bind _.Email
+            ProfilePage.view displayName email model dispatch
         | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm model.EditingExpenseId.IsSome dispatch
         | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
-        | Analytics           -> loadingView ()
 
     let toast =
         match model.Toast with
@@ -799,11 +918,13 @@ let view (model: Model) (dispatch: Msg -> unit) =
             ]
         | None -> Html.none
 
+    let nav = if isSpaceTab then bottomNav model dispatch else Html.none
+
 #if DEVMODE
     if DevMode.isEnabled () && not model.SpaceState.Members.IsEmpty then
-        Html.div [ prop.children [ inner; devActorBadge model dispatch; toast ] ]
+        Html.div [ prop.children [ inner; nav; devActorBadge model dispatch; toast ] ]
     else
-        Html.div [ prop.children [ inner; toast ] ]
+        Html.div [ prop.children [ inner; nav; toast ] ]
 #else
-    Html.div [ prop.children [ inner; toast ] ]
+    Html.div [ prop.children [ inner; nav; toast ] ]
 #endif
