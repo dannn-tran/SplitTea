@@ -82,7 +82,7 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm
                 prop.children [
                     Html.button [
                         prop.className "text-teal-600 hover:text-teal-800 text-sm font-medium"
-                        prop.text "← Back"
+                        prop.text "←"
                         prop.onClick (fun _ -> dispatch (NavigateTo SpaceOverview))
                     ]
                     Html.h1 [ prop.className "text-xl font-bold text-gray-900"; prop.text "Record Settlement" ]

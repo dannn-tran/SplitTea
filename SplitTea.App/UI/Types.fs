@@ -45,23 +45,26 @@ type SettlementForm = {
 }
 
 type Model = {
-    Auth           : Auth.AuthUser option
-    Page           : Page
-    ActiveSpaceId  : SpaceId option
-    SpaceState     : SpaceState
-    CategoryFilter : string
-    NewCategory    : string
-    EditingCategory : string option
+    Auth             : Auth.AuthUser option
+    Page             : Page
+    ActiveSpaceId    : SpaceId option
+    SpaceState       : SpaceState
+    CategoryFilter   : string
+    NewCategory      : string
+    EditingCategory  : string option
     EditCategoryName : string
-    CategoryError  : string option
-    ExchangeRates  : Map<string, decimal>  // base = group currency → other currencies
-    SignInEmail    : string
-    SignInError    : string option
-    IsAuthLoading  : bool
-    ExpenseForm    : ExpenseForm
-    SettlementForm : SettlementForm
+    CategoryError    : string option
+    ExchangeRates    : Map<string, decimal>
+    SignInEmail      : string
+    SignInError      : string option
+    IsAuthLoading    : bool
+    ExpenseForm      : ExpenseForm
+    SettlementForm   : SettlementForm
+    Toast            : string option
+    ShowSettings     : bool
+    ShowAnalytics    : bool
 #if DEVMODE
-    DevActorId     : MemberId option
+    DevActorId       : MemberId option
 #endif
 }
 
@@ -101,6 +104,9 @@ type Msg =
     | CategoryFromFormSaved    of Result<string, string>
     | SyncDone
     | ExchangeRatesLoaded      of Map<string, decimal>
+    | ToastCleared
+    | SettingsToggled
+    | AnalyticsToggled
 #if DEVMODE
     | DevActorSet              of MemberId
     | DevReset

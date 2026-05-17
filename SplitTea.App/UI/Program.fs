@@ -120,6 +120,9 @@ let init () : Model * Cmd<Msg> =
         IsAuthLoading  = true
         ExpenseForm    = emptyExpenseForm ""
         SettlementForm = emptySettlementForm 0 ""
+        Toast          = None
+        ShowSettings   = false
+        ShowAnalytics  = false
 #if DEVMODE
         DevActorId     = getDevActorId ()
 #endif
@@ -388,8 +391,10 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | ExpenseSaved (Ok ()) ->
         match model.ActiveSpaceId with
         | Some sid ->
-            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-            { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false } }, cmd
+            let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false }; Toast = Some "Expense saved!" },
+            Cmd.batch [ loadCmd; clearCmd ]
         | None ->
             { model with Page = SpaceOverview }, Cmd.none
 
@@ -457,8 +462,10 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | SettlementSaved (Ok ()) ->
         match model.ActiveSpaceId with
         | Some sid ->
-            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-            { model with SettlementForm = { model.SettlementForm with IsSubmitting = false } }, cmd
+            let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            { model with SettlementForm = { model.SettlementForm with IsSubmitting = false }; Toast = Some "Settlement recorded!" },
+            Cmd.batch [ loadCmd; clearCmd ]
         | None ->
             { model with Page = SpaceOverview }, Cmd.none
 
@@ -474,6 +481,15 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | SyncDone ->
         model, Cmd.none
+
+    | ToastCleared ->
+        { model with Toast = None }, Cmd.none
+
+    | SettingsToggled ->
+        { model with ShowSettings = not model.ShowSettings }, Cmd.none
+
+    | AnalyticsToggled ->
+        { model with ShowAnalytics = not model.ShowAnalytics }, Cmd.none
 
 #if DEVMODE
     | DevActorSet memberId ->
@@ -646,13 +662,27 @@ let view (model: Model) (dispatch: Msg -> unit) =
         | SpaceOverview       -> SpacePage.view model.SpaceState model dispatch
         | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm dispatch
         | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
-        | Analytics           -> loadingView ()  // placeholder until analytics page is built
+        | Analytics           -> loadingView ()
+
+    let toast =
+        match model.Toast with
+        | Some msg ->
+            Html.div [
+                prop.className "fixed top-4 inset-x-0 flex justify-center z-50 pointer-events-none"
+                prop.children [
+                    Html.div [
+                        prop.className "bg-gray-800 text-white text-sm font-medium px-4 py-2.5 rounded-full shadow-lg"
+                        prop.text msg
+                    ]
+                ]
+            ]
+        | None -> Html.none
+
 #if DEVMODE
     if DevMode.isEnabled () && not model.SpaceState.Members.IsEmpty then
-        Html.div [
-            prop.children [ inner; devActorBadge model dispatch ]
-        ]
-    else inner
+        Html.div [ prop.children [ inner; devActorBadge model dispatch; toast ] ]
+    else
+        Html.div [ prop.children [ inner; toast ] ]
 #else
-    inner
+    Html.div [ prop.children [ inner; toast ] ]
 #endif
