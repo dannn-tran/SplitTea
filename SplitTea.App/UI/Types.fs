@@ -58,6 +58,9 @@ type Model = {
     IsAuthLoading  : bool
     ExpenseForm    : ExpenseForm
     SettlementForm : SettlementForm
+#if DEVMODE
+    DevActorId     : MemberId option
+#endif
 }
 
 type Msg =
@@ -93,3 +96,6 @@ type Msg =
     | CategorySaved        of Result<unit, string>
     | SyncDone
     | ExchangeRatesLoaded  of Map<string, decimal>
+#if DEVMODE
+    | DevActorSet          of MemberId
+#endif

@@ -18,27 +18,25 @@ let private mkEnvelope (spaceId: SpaceId) (actorId: MemberId) (payload: 'P) : Ev
 let createLocalSpace () : Async<SpaceId> =
     async {
         let spaceId = SpaceId (System.Guid.NewGuid())
-        let memberId = MemberId (System.Guid.NewGuid())
-        let userId = UserId DevMode.fakeUserId
+        let aliceId = MemberId (System.Guid.NewGuid())
+        let bobId   = MemberId (System.Guid.NewGuid())
+        let carolId = MemberId (System.Guid.NewGuid())
 
         do!
-            SpaceCreated (mkEnvelope spaceId memberId {
+            SpaceCreated (mkEnvelope spaceId aliceId {
                 Name       = DevMode.fakeSpaceName
                 Currency   = "SGD"
-                CreatedBy  = memberId
+                CreatedBy  = aliceId
                 Categories = Commands.defaultCategories
             })
             |> Storage.saveEvent
 
-        do!
-            MemberAdded (mkEnvelope spaceId memberId {
-                Member = {
-                    Id = memberId
-                    DisplayName = DevMode.fakeMemberName
-                    UserId = Some userId
-                }
-            })
-            |> Storage.saveEvent
+        for (mid, name) in [ aliceId, "Alice"; bobId, "Bob"; carolId, "Carol" ] do
+            do!
+                MemberAdded (mkEnvelope spaceId aliceId {
+                    Member = { Id = mid; DisplayName = name; UserId = None }
+                })
+                |> Storage.saveEvent
 
         return spaceId
     }

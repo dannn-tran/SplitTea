@@ -3,6 +3,27 @@ module SpacePage
 open Feliz
 open SplitTea.Core
 
+let private svgIcon (attrs: ISvgAttribute list) (paths: ISvgAttribute list list) =
+    Svg.svg ([ svg.viewBox (0, 0, 16, 16); svg.fill "currentColor"; svg.className "w-4 h-4" ] @ attrs @
+             [ svg.children (paths |> List.map Svg.path) ])
+
+let private pencilIcon =
+    svgIcon [] [
+        [ svg.d "M13.488 2.513a1.75 1.75 0 0 0-2.475 0L6.75 6.774a2.75 2.75 0 0 0-.596.892l-.848 2.047a.75.75 0 0 0 .98.98l2.047-.848a2.75 2.75 0 0 0 .892-.596l4.261-4.262a1.75 1.75 0 0 0 0-2.474Z" ]
+        [ svg.d "M4.75 3.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V9A.75.75 0 0 1 14 9v2.25A2.75 2.75 0 0 1 11.25 14h-6.5A2.75 2.75 0 0 1 2 11.25v-6.5A2.75 2.75 0 0 1 4.75 2H7a.75.75 0 0 1 0 1.5H4.75Z" ]
+    ]
+
+let private checkIcon =
+    svgIcon [] [
+        [ svg.d "M12.207 4.793a1 1 0 0 1 0 1.414l-5 5a1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 1.414-1.414L6.5 9.086l4.293-4.293a1 1 0 0 1 1.414 0Z" ]
+    ]
+
+let private trashIcon =
+    svgIcon [] [
+        [ svg.custom ("fillRule", "evenodd"); svg.clipRule.evenodd
+          svg.d "M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.711Z" ]
+    ]
+
 let private memberName (state: SpaceState) (id: MemberId) =
     state.Members
     |> Map.tryFind id
@@ -161,17 +182,22 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                                             else
                                                 Html.span [ prop.className "flex-1 text-sm text-gray-800"; prop.text category.Name ]
                                             Html.button [
-                                                prop.className "text-xs text-teal-600 hover:text-teal-800 font-medium"
-                                                prop.text (if isEditing then "Save" else "Rename")
+                                                prop.type' "button"
+                                                prop.className "p-1 text-gray-400 hover:text-teal-600 transition-colors"
+                                                prop.title (if isEditing then "Save" else "Rename")
                                                 prop.onClick (fun _ ->
                                                     if isEditing then dispatch UITypes.SaveCategoryRename
                                                     else dispatch (UITypes.StartCategoryRename category.Name))
+                                                prop.children [ if isEditing then checkIcon else pencilIcon ]
                                             ]
-                                            Html.button [
-                                                prop.className "text-xs text-red-500 hover:text-red-700 font-medium"
-                                                prop.text "Archive"
-                                                prop.onClick (fun _ -> dispatch (UITypes.ArchiveCategory category.Name))
-                                            ]
+                                            if not isEditing then
+                                                Html.button [
+                                                    prop.type' "button"
+                                                    prop.className "p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                                    prop.title "Archive"
+                                                    prop.onClick (fun _ -> dispatch (UITypes.ArchiveCategory category.Name))
+                                                    prop.children [ trashIcon ]
+                                                ]
                                         ]
                                     ])
                             )

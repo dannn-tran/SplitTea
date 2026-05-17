@@ -302,10 +302,21 @@ let private fromStored (raw: obj) : SpaceEvent option =
         | _ -> None
     with _ -> None
 
+#if DEVMODE
+let private devChannel : obj = Fable.Core.JsInterop.emitJsExpr () "new BroadcastChannel('splittea-dev')"
+#endif
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 let saveEvent (event: SpaceEvent) : Async<unit> =
-    IndexedDb.saveEvent (toStored event false)
+    async {
+        let stored = toStored event false
+        do! IndexedDb.saveEvent stored
+#if DEVMODE
+        if DevMode.isEnabled () then
+            devChannel?postMessage(stored?spaceId) |> ignore
+#endif
+    }
 
 let loadSpaceState (spaceId: SpaceId) : Async<SpaceState> =
     async {

@@ -8,6 +8,16 @@ open SplitTea.Core
 open UITypes
 
 let private browserStorage : obj = emitJsExpr () "localStorage"
+#if DEVMODE
+let private sessionStore   : obj = emitJsExpr () "sessionStorage"
+let private getDevActorId () : MemberId option =
+    let v : obj = sessionStore?getItem("devActorId")
+    if isNull v then None
+    else try Some (MemberId (System.Guid.Parse (string v))) with _ -> None
+let private setDevActorId (id: MemberId) =
+    let (MemberId g) = id
+    sessionStore?setItem("devActorId", string g) |> ignore
+#endif
 
 let private getActiveSpaceId () : SpaceId option =
     let v : obj = browserStorage?getItem("activeSpaceId")
@@ -49,6 +59,17 @@ let private findActorId (state: SpaceState) (user: Auth.AuthUser option) : Membe
         |> Seq.tryFind (fun (_, m) -> m.UserId = Some uid)
         |> Option.map fst
         |> Option.defaultWith first
+
+let private resolveActor (model: Model) : MemberId =
+    let first () = model.SpaceState.Members |> Map.toList |> List.head |> fst
+#if DEVMODE
+    if DevMode.isEnabled () then
+        match model.DevActorId with
+        | Some id when Map.containsKey id model.SpaceState.Members -> id
+        | _ -> first ()
+    else
+#endif
+    findActorId model.SpaceState model.Auth
 
 let private emptyExpenseForm (groupCurrency: string) : ExpenseForm = {
     Description      = ""
@@ -97,6 +118,9 @@ let init () : Model * Cmd<Msg> =
         IsAuthLoading  = true
         ExpenseForm    = emptyExpenseForm ""
         SettlementForm = emptySettlementForm 0 ""
+#if DEVMODE
+        DevActorId     = getDevActorId ()
+#endif
     }
     let cmd =
         match activeSpaceId with
@@ -205,7 +229,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             elif model.SpaceState.Categories |> Map.containsKey name then
                 { model with CategoryError = Some "Category already exists." }, Cmd.none
             else
-                let actorId = findActorId model.SpaceState model.Auth
+                let actorId = resolveActor model
                 let cmd =
                     Cmd.OfAsync.either
                         (fun () -> Commands.addCategory sid actorId name)
@@ -223,7 +247,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             elif oldName <> newName && model.SpaceState.Categories |> Map.containsKey newName then
                 { model with CategoryError = Some "Category already exists." }, Cmd.none
             else
-                let actorId = findActorId model.SpaceState model.Auth
+                let actorId = resolveActor model
                 let cmd =
                     Cmd.OfAsync.either
                         (fun () -> Commands.renameCategory sid actorId oldName newName)
@@ -237,7 +261,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         match model.ActiveSpaceId with
         | None -> model, Cmd.none
         | Some sid ->
-            let actorId = findActorId model.SpaceState model.Auth
+            let actorId = resolveActor model
             let cmd =
                 Cmd.OfAsync.either
                     (fun () -> Commands.archiveCategory sid actorId name)
@@ -301,7 +325,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 elif form.Description.Trim() = "" then
                     { model with ExpenseForm = { form with Error = Some "Description is required." } }, Cmd.none
                 else
-                    let actorId  = findActorId model.SpaceState model.Auth
+                    let actorId  = resolveActor model
                     let split    = Equal (members |> List.map (fun m -> m.Id))
                     let date     = parseFormDate form.DateText
                     let category = if form.Category = "" then None else Some form.Category
@@ -364,7 +388,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 elif form.UseSecondPayment && form.Currency2 <> groupCur && rate2 = None then
                     { model with SettlementForm = { form with Error = Some "Exchange rate required for second currency." } }, Cmd.none
                 else
-                    let actorId = findActorId model.SpaceState model.Auth
+                    let actorId = resolveActor model
                     let date    = parseFormDate form.DateText
                     let notes   = if form.Notes.Trim() = "" then None else Some (form.Notes.Trim())
                     let save1 = Commands.recordSettlement sid actorId fromId toId amount form.Currency rate date notes
@@ -408,6 +432,12 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | SyncDone ->
         model, Cmd.none
 
+#if DEVMODE
+    | DevActorSet memberId ->
+        setDevActorId memberId
+        { model with DevActorId = Some memberId }, Cmd.none
+#endif
+
 let subscribe (model: Model) : Sub<Msg> =
     let authSub (dispatch: Msg -> unit) =
         let unsub = Auth.subscribe (AuthReceived >> dispatch)
@@ -419,6 +449,17 @@ let subscribe (model: Model) : Sub<Msg> =
     | None -> baseSubs
     | Some sid ->
         let (SpaceId g) = sid
+#if DEVMODE
+        if DevMode.isEnabled () then
+            let devBroadcastSub (dispatch: Msg -> unit) =
+                let channel : obj = emitJsExpr () "new BroadcastChannel('splittea-dev')"
+                channel?addEventListener("message", fun (e: obj) ->
+                    try dispatch (RemoteEventReceived (SpaceId (System.Guid.Parse (string e?data))))
+                    with _ -> ()) |> ignore
+                { new System.IDisposable with member _.Dispose() = channel?close() |> ignore }
+            baseSubs @ [ ["dev-broadcast"; string g], devBroadcastSub ]
+        else
+#endif
         let realtimeSub (dispatch: Msg -> unit) =
             let unsub = Sync.subscribeSpace sid (fun () -> dispatch (RemoteEventReceived sid))
             { new System.IDisposable with member _.Dispose() = unsub () }
@@ -503,14 +544,51 @@ let private loadingView () =
         ]
     ]
 
-let view (model: Model) (dispatch: Msg -> unit) =
-    match model.Page with
-    | Loading             -> loadingView ()
-    | SignIn              -> signInView model dispatch
 #if DEVMODE
-    | DevBootstrap        -> devBootstrapView model dispatch
+let private devActorBadge (model: Model) (dispatch: Msg -> unit) =
+    let members =
+        model.SpaceState.Members
+        |> Map.toList
+        |> List.sortBy (fun (_, m) -> m.DisplayName)
+    Html.div [
+        prop.className "fixed bottom-4 right-4 z-50 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg flex items-center gap-2"
+        prop.children [
+            Html.span [ prop.className "text-gray-400"; prop.text "Acting as" ]
+            Html.select [
+                prop.className "bg-gray-700 text-white text-xs rounded px-1.5 py-0.5 focus:outline-none"
+                prop.value (
+                    model.DevActorId
+                    |> Option.map (fun (MemberId g) -> string g)
+                    |> Option.defaultValue "")
+                prop.onChange (fun (v: string) ->
+                    try dispatch (DevActorSet (MemberId (System.Guid.Parse v)))
+                    with _ -> ())
+                prop.children (
+                    members |> List.map (fun (MemberId g, m) ->
+                        Html.option [ prop.value (string g); prop.text m.DisplayName ]))
+            ]
+        ]
+    ]
 #endif
-    | SpaceOverview       -> SpacePage.view model.SpaceState model dispatch
-    | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm dispatch
-    | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
-    | Analytics           -> loadingView ()  // placeholder until analytics page is built
+
+let view (model: Model) (dispatch: Msg -> unit) =
+    let inner =
+        match model.Page with
+        | Loading             -> loadingView ()
+        | SignIn              -> signInView model dispatch
+#if DEVMODE
+        | DevBootstrap        -> devBootstrapView model dispatch
+#endif
+        | SpaceOverview       -> SpacePage.view model.SpaceState model dispatch
+        | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm dispatch
+        | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
+        | Analytics           -> loadingView ()  // placeholder until analytics page is built
+#if DEVMODE
+    if DevMode.isEnabled () && not model.SpaceState.Members.IsEmpty then
+        Html.div [
+            prop.children [ inner; devActorBadge model dispatch ]
+        ]
+    else inner
+#else
+    inner
+#endif
