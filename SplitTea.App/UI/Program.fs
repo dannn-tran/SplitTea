@@ -82,6 +82,8 @@ let private emptyExpenseForm (groupCurrency: string) : ExpenseForm = {
     Notes            = ""
     IsSubmitting     = false
     Error            = None
+    IsAddingCategory = false
+    NewCategoryText  = ""
 }
 
 let private emptySettlementForm (memberCount: int) (groupCurrency: string) : SettlementForm = {
@@ -298,6 +300,37 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         let cur = model.SpaceState.Currency
         { model with Page = RecordSettlement; SettlementForm = emptySettlementForm n cur }, Cmd.none
 
+    | AddCategoryFromForm ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let name = model.ExpenseForm.NewCategoryText.Trim()
+            if name = "" then model, Cmd.none
+            elif model.SpaceState.Categories |> Map.containsKey name then
+                let form = { model.ExpenseForm with Category = name; IsAddingCategory = false; NewCategoryText = "" }
+                { model with ExpenseForm = form }, Cmd.none
+            else
+                let actorId = resolveActor model
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.addCategory sid actorId name)
+                        ()
+                        (fun () -> CategoryFromFormSaved (Ok name))
+                        (fun ex -> CategoryFromFormSaved (Error ex.Message))
+                let form = { model.ExpenseForm with IsAddingCategory = false; NewCategoryText = "" }
+                { model with ExpenseForm = form; IsAuthLoading = true }, cmd
+
+    | CategoryFromFormSaved (Ok name) ->
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceStateUpdated ss)
+            { model with IsAuthLoading = false; ExpenseForm = { model.ExpenseForm with Category = name } }, cmd
+        | None ->
+            { model with IsAuthLoading = false }, Cmd.none
+
+    | CategoryFromFormSaved (Error err) ->
+        { model with IsAuthLoading = false; ExpenseForm = { model.ExpenseForm with Error = Some err } }, Cmd.none
+
     | SettlementFromSuggestion s ->
         let members = sortedMembers model.SpaceState
         let findIdx id = members |> List.tryFindIndex (fun m -> m.Id = id) |> Option.defaultValue 0
@@ -446,6 +479,19 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | DevActorSet memberId ->
         setDevActorId memberId
         { model with DevActorId = Some memberId }, Cmd.none
+
+    | DevReset ->
+        let cmd =
+            Cmd.OfAsync.attempt
+                (fun () -> async {
+                    do! IndexedDb.clearAllEvents ()
+                    browserStorage?removeItem("activeSpaceId") |> ignore
+                    sessionStore?removeItem("devActorId") |> ignore
+                    emitJsExpr<unit> () "window.location.reload()"
+                })
+                ()
+                (fun _ -> NavigateTo DevBootstrap)
+        model, cmd
 #endif
 
 let subscribe (model: Model) : Sub<Msg> =
@@ -576,6 +622,14 @@ let private devActorBadge (model: Model) (dispatch: Msg -> unit) =
                 prop.children (
                     members |> List.map (fun (MemberId g, m) ->
                         Html.option [ prop.value (string g); prop.text m.DisplayName ]))
+            ]
+            Html.span [ prop.className "text-gray-600"; prop.text "|" ]
+            Html.button [
+                prop.type' "button"
+                prop.className "text-red-400 hover:text-red-300 transition-colors"
+                prop.title "Clear all data and restart"
+                prop.text "↺ Reset"
+                prop.onClick (fun _ -> dispatch DevReset)
             ]
         ]
     ]

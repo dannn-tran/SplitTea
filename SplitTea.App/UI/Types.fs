@@ -24,6 +24,8 @@ type ExpenseForm = {
     Notes            : string
     IsSubmitting     : bool
     Error            : string option
+    IsAddingCategory : bool
+    NewCategoryText  : string
 }
 
 type SettlementForm = {
@@ -93,10 +95,13 @@ type Msg =
     | EditCategoryNameSet  of string
     | SaveCategoryRename
     | ArchiveCategory      of string
-    | CategorySaved           of Result<unit, string>
+    | CategorySaved            of Result<unit, string>
     | SettlementFromSuggestion of SuggestedSettlement
+    | AddCategoryFromForm
+    | CategoryFromFormSaved    of Result<string, string>
     | SyncDone
-    | ExchangeRatesLoaded     of Map<string, decimal>
+    | ExchangeRatesLoaded      of Map<string, decimal>
 #if DEVMODE
-    | DevActorSet             of MemberId
+    | DevActorSet              of MemberId
+    | DevReset
 #endif

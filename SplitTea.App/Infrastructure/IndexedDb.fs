@@ -35,6 +35,13 @@ let getPendingEvents () : Async<obj[]> =
         return! (db'?getAllFromIndex("events", "synced", false) : JS.Promise<obj[]>) |> Async.AwaitPromise
     }
 
+let clearAllEvents () : Async<unit> =
+    async {
+        let! db' = db |> Async.AwaitPromise
+        let! _ = (db'?clear("events") : JS.Promise<unit>) |> Async.AwaitPromise
+        ()
+    }
+
 let markSynced (id: string) : Async<unit> =
     async {
         let! db' = db |> Async.AwaitPromise

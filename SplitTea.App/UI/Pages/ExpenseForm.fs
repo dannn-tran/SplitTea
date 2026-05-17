@@ -119,21 +119,58 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                 )
                             )
                         ])
-                    field "Category"
-                        (Html.select [
-                            prop.className inputCls
-                            prop.value form.Category
-                            prop.onChange (fun (v: string) -> set (fun f -> { f with Category = v }))
-                            prop.children (
-                                Html.option [ prop.value ""; prop.text "— None —" ]
-                                :: (categories |> List.map (fun c ->
-                                    Html.option [
-                                        prop.value c.Name
-                                        prop.text c.Name
+                    Html.div [
+                        prop.className "space-y-1"
+                        prop.children [
+                            Html.label [ prop.className "block text-sm font-medium text-gray-700"; prop.text "Category" ]
+                            Html.select [
+                                prop.className inputCls
+                                prop.value form.Category
+                                prop.onChange (fun (v: string) -> set (fun f -> { f with Category = v }))
+                                prop.children (
+                                    Html.option [ prop.value ""; prop.text "— None —" ]
+                                    :: (categories |> List.map (fun c ->
+                                        Html.option [ prop.value c.Name; prop.text c.Name ]))
+                                )
+                            ]
+                            if form.IsAddingCategory then
+                                Html.div [
+                                    prop.className "flex gap-2 items-center"
+                                    prop.children [
+                                        Html.input [
+                                            prop.type' "text"
+                                            prop.className inputCls
+                                            prop.placeholder "New category name"
+                                            prop.value form.NewCategoryText
+                                            prop.autoFocus true
+                                            prop.onChange (fun v -> set (fun f -> { f with NewCategoryText = v }))
+                                            prop.onKeyDown (fun e ->
+                                                if e.key = "Enter" then dispatch AddCategoryFromForm
+                                                elif e.key = "Escape" then set (fun f -> { f with IsAddingCategory = false; NewCategoryText = "" }))
+                                        ]
+                                        Html.button [
+                                            prop.type' "button"
+                                            prop.className "bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                                            prop.text "Add"
+                                            prop.onClick (fun _ -> dispatch AddCategoryFromForm)
+                                        ]
+                                        Html.button [
+                                            prop.type' "button"
+                                            prop.className "text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap"
+                                            prop.text "Cancel"
+                                            prop.onClick (fun _ -> set (fun f -> { f with IsAddingCategory = false; NewCategoryText = "" }))
+                                        ]
                                     ]
-                                ))
-                            )
-                        ])
+                                ]
+                            else
+                                Html.button [
+                                    prop.type' "button"
+                                    prop.className "text-xs text-teal-600 hover:text-teal-800 font-medium"
+                                    prop.text "+ New category"
+                                    prop.onClick (fun _ -> set (fun f -> { f with IsAddingCategory = true }))
+                                ]
+                        ]
+                    ]
                     field "Date"
                         (Html.input [
                             prop.type' "date"
