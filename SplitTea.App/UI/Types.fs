@@ -13,6 +13,8 @@ type Page =
     | RecordSettlement
     | Analytics
 
+type SplitMode = EqualSplit | CustomSplit
+
 type ExpenseForm = {
     Description      : string
     AmountText       : string
@@ -26,6 +28,9 @@ type ExpenseForm = {
     Error            : string option
     IsAddingCategory : bool
     NewCategoryText  : string
+    SplitMode        : SplitMode
+    IncludedIndices  : Set<int>
+    CustomAmounts    : Map<int, string>
 }
 
 type SettlementForm = {

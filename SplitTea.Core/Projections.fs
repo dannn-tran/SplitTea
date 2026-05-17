@@ -49,7 +49,10 @@ module Projections =
 
     // Returns per-member share amounts summing exactly to `amount`.
     // Payer absorbs any rounding remainder so non-payer obligations are exact.
-    let private expandSplit (amount: Amount) (split: Split) (paidBy: MemberId) : Map<MemberId, Amount> =
+    // exchangeRate is only used for Exact split: shares are stored in PaidCurrency,
+    // so they need converting to group currency the same way PaidAmount does.
+    // Equal/Percentage/Shares receive amount already in group currency and don't need it.
+    let private expandSplit (amount: Amount) (exchangeRate: decimal option) (split: Split) (paidBy: MemberId) : Map<MemberId, Amount> =
         match split with
         | Equal members ->
             let n = List.length members
@@ -60,7 +63,8 @@ module Projections =
             let payerShare = Map.tryFind paidBy base' |> Option.defaultValue 0m
             Map.add paidBy (payerShare + remainder) base'
         | Exact shares ->
-            shares |> Map.ofList
+            let rate = exchangeRate |> Option.defaultValue 1m
+            shares |> List.map (fun (m, s) -> m, round2 (s * rate)) |> Map.ofList
         | Percentage shares ->
             shares |> List.map (fun (m, pct) -> m, round2 (amount * pct / 100m)) |> Map.ofList
         | Shares shares ->
@@ -83,7 +87,7 @@ module Projections =
                 match workingAmount expense state.Currency with
                 | None -> pos  // unresolved foreign-currency expense; skip
                 | Some amt ->
-                    let shares = expandSplit amt expense.Split expense.PaidBy
+                    let shares = expandSplit amt expense.ExchangeRate expense.Split expense.PaidBy
                     shares
                     |> Map.toSeq
                     |> Seq.filter (fun (m, _) -> m <> expense.PaidBy)

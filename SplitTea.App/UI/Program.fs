@@ -71,7 +71,7 @@ let private resolveActor (model: Model) : MemberId =
 #endif
     findActorId model.SpaceState model.Auth
 
-let private emptyExpenseForm (groupCurrency: string) : ExpenseForm = {
+let private emptyExpenseForm (groupCurrency: string) (memberCount: int) : ExpenseForm = {
     Description      = ""
     AmountText       = ""
     Currency         = groupCurrency
@@ -84,6 +84,9 @@ let private emptyExpenseForm (groupCurrency: string) : ExpenseForm = {
     Error            = None
     IsAddingCategory = false
     NewCategoryText  = ""
+    SplitMode        = EqualSplit
+    IncludedIndices  = Set.ofList [ 0 .. memberCount - 1 ]
+    CustomAmounts    = Map.empty
 }
 
 let private emptySettlementForm (memberCount: int) (groupCurrency: string) : SettlementForm = {
@@ -119,7 +122,7 @@ let init () : Model * Cmd<Msg> =
         SignInEmail    = ""
         SignInError    = None
         IsAuthLoading  = true
-        ExpenseForm    = emptyExpenseForm ""
+        ExpenseForm    = emptyExpenseForm "" 0
         SettlementForm = emptySettlementForm 0 ""
         Toast          = None
         ShowSettings   = false
@@ -297,14 +300,42 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | AddExpenseClick ->
         let cur = model.SpaceState.Currency
-        { model with Page = AddExpense; ExpenseForm = emptyExpenseForm cur; EditingExpenseId = None }, Cmd.none
+        let n   = model.SpaceState.Members.Count
+        { model with Page = AddExpense; ExpenseForm = emptyExpenseForm cur n; EditingExpenseId = None }, Cmd.none
 
     | EditExpenseClick expenseId ->
         match Map.tryFind expenseId model.SpaceState.Expenses with
         | None -> model, Cmd.none
         | Some expense ->
             let members = sortedMembers model.SpaceState
-            let paidByIndex = members |> List.tryFindIndex (fun m -> m.Id = expense.PaidBy) |> Option.defaultValue 0
+            let findIdx id = members |> List.tryFindIndex (fun m -> m.Id = id)
+            let paidByIndex = findIdx expense.PaidBy |> Option.defaultValue 0
+            let splitMode, includedIndices, customAmounts =
+                match expense.Split with
+                | Equal memberIds ->
+                    let indices = memberIds |> List.choose findIdx |> Set.ofList
+                    EqualSplit, indices, Map.empty
+                | Exact shares ->
+                    let amounts =
+                        shares
+                        |> List.choose (fun (id, amt) -> findIdx id |> Option.map (fun i -> i, sprintf "%.2f" amt))
+                        |> Map.ofList
+                    CustomSplit, Set.empty, amounts
+                | Percentage shares ->
+                    let amounts =
+                        shares
+                        |> List.choose (fun (id, pct) ->
+                            findIdx id |> Option.map (fun i -> i, sprintf "%.2f" (expense.PaidAmount * pct / 100m)))
+                        |> Map.ofList
+                    CustomSplit, Set.empty, amounts
+                | Shares shares ->
+                    let total = shares |> List.sumBy snd
+                    let amounts =
+                        shares
+                        |> List.choose (fun (id, s) ->
+                            findIdx id |> Option.map (fun i -> i, sprintf "%.2f" (expense.PaidAmount * decimal s / decimal total)))
+                        |> Map.ofList
+                    CustomSplit, Set.empty, amounts
             let form = {
                 Description      = expense.Description
                 AmountText       = sprintf "%.2f" expense.PaidAmount
@@ -318,6 +349,9 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 Error            = None
                 IsAddingCategory = false
                 NewCategoryText  = ""
+                SplitMode        = splitMode
+                IncludedIndices  = includedIndices
+                CustomAmounts    = customAmounts
             }
             { model with Page = AddExpense; ExpenseForm = form; EditingExpenseId = Some expenseId }, Cmd.none
 
@@ -410,8 +444,24 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 elif form.Description.Trim() = "" then
                     { model with ExpenseForm = { form with Error = Some "Description is required." } }, Cmd.none
                 else
-                    let actorId  = resolveActor model
-                    let split    = Equal (members |> List.map (fun m -> m.Id))
+                    let actorId = resolveActor model
+                    let split =
+                        match form.SplitMode with
+                        | EqualSplit ->
+                            form.IncludedIndices
+                            |> Set.toList
+                            |> List.choose (fun i -> members |> List.tryItem i |> Option.map (fun m -> m.Id))
+                            |> Equal
+                        | CustomSplit ->
+                            form.CustomAmounts
+                            |> Map.toList
+                            |> List.choose (fun (i, txt) ->
+                                try
+                                    let amt = decimal txt
+                                    if amt > 0m then members |> List.tryItem i |> Option.map (fun m -> m.Id, amt)
+                                    else None
+                                with _ -> None)
+                            |> Exact
                     let date     = parseFormDate form.DateText
                     let category = if form.Category = "" then None else Some form.Category
                     let notes    = if form.Notes.Trim() = "" then None else Some (form.Notes.Trim())

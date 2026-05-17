@@ -26,8 +26,19 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
 
     let set f = dispatch (ExpenseFormSet (f form))
     let isForeignCurrency = form.Currency <> state.Currency
+    let splitValid =
+        match form.SplitMode with
+        | EqualSplit -> not (Set.isEmpty form.IncludedIndices)
+        | CustomSplit ->
+            let totalAmt = try decimal form.AmountText with _ -> 0m
+            let sharesSum =
+                form.CustomAmounts
+                |> Map.toList
+                |> List.sumBy (fun (_, txt) -> try decimal txt with _ -> 0m)
+            totalAmt > 0m && sharesSum = totalAmt
     let disabled = form.IsSubmitting || form.Description.Trim() = "" || form.AmountText.Trim() = ""
                    || (isForeignCurrency && form.ExchangeRateText.Trim() = "")
+                   || not splitValid
 
     Html.div [
         prop.className "max-w-lg mx-auto px-4 py-8 space-y-6"
@@ -109,6 +120,89 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                 )
                             )
                         ])
+                    Html.div [
+                        prop.className "space-y-2"
+                        prop.children [
+                            Html.label [ prop.className Styles.label; prop.text "Split" ]
+                            Html.div [
+                                prop.className "flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium"
+                                prop.children [
+                                    Html.button [
+                                        prop.type' "button"
+                                        prop.className (if form.SplitMode = EqualSplit then "flex-1 py-2 bg-teal-600 text-white" else "flex-1 py-2 text-gray-600 hover:bg-gray-50 transition-colors")
+                                        prop.text "Equal"
+                                        prop.onClick (fun _ -> set (fun f -> { f with SplitMode = EqualSplit }))
+                                    ]
+                                    Html.button [
+                                        prop.type' "button"
+                                        prop.className (if form.SplitMode = CustomSplit then "flex-1 py-2 bg-teal-600 text-white border-l border-gray-300" else "flex-1 py-2 text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-300")
+                                        prop.text "Custom"
+                                        prop.onClick (fun _ -> set (fun f -> { f with SplitMode = CustomSplit }))
+                                    ]
+                                ]
+                            ]
+                            match form.SplitMode with
+                            | EqualSplit ->
+                                Html.div [
+                                    prop.className "space-y-1"
+                                    prop.children (
+                                        members |> List.mapi (fun i m ->
+                                            let included = Set.contains i form.IncludedIndices
+                                            Html.label [
+                                                prop.className (Styles.cx [ "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer"; if included then "bg-teal-50" else "hover:bg-gray-50" ])
+                                                prop.children [
+                                                    Html.input [
+                                                        prop.type' "checkbox"
+                                                        prop.className "w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-2 focus:ring-teal-500"
+                                                        prop.isChecked included
+                                                        prop.onChange (fun (v: bool) ->
+                                                            set (fun f ->
+                                                                let indices = if v then Set.add i f.IncludedIndices else Set.remove i f.IncludedIndices
+                                                                { f with IncludedIndices = indices }))
+                                                    ]
+                                                    Html.span [ prop.className "text-sm text-gray-800 select-none"; prop.text m.DisplayName ]
+                                                ]
+                                            ])
+                                    )
+                                ]
+                            | CustomSplit ->
+                                let totalAmt   = try decimal form.AmountText with _ -> 0m
+                                let sharesSum  = form.CustomAmounts |> Map.toList |> List.sumBy (fun (_, txt) -> try decimal txt with _ -> 0m)
+                                let remaining  = totalAmt - sharesSum
+                                Html.div [
+                                    prop.className "space-y-2"
+                                    prop.children (
+                                        (members |> List.mapi (fun i m ->
+                                            let txt = form.CustomAmounts |> Map.tryFind i |> Option.defaultValue ""
+                                            Html.div [
+                                                prop.className "flex items-center gap-3"
+                                                prop.children [
+                                                    Html.span [ prop.className "w-24 shrink-0 text-sm text-gray-700 truncate"; prop.text m.DisplayName ]
+                                                    Html.input [
+                                                        prop.type' "text"
+                                                        prop.className Styles.input
+                                                        prop.placeholder "0.00"
+                                                        prop.value txt
+                                                        prop.onChange (fun v -> set (fun f -> { f with CustomAmounts = Map.add i v f.CustomAmounts }))
+                                                    ]
+                                                ]
+                                            ]))
+                                        @ [ Html.div [
+                                                prop.className "flex justify-end pt-1"
+                                                prop.children [
+                                                    Html.span [
+                                                        prop.className (if totalAmt > 0m && remaining = 0m then "text-xs font-medium text-green-600" else "text-xs font-medium text-red-500")
+                                                        prop.text (
+                                                            if totalAmt <= 0m then ""
+                                                            elif remaining = 0m then "✓ Fully allocated"
+                                                            else sprintf "Remaining: %.2f" remaining)
+                                                    ]
+                                                ]
+                                            ] ]
+                                    )
+                                ]
+                        ]
+                    ]
                     Html.div [
                         prop.className "space-y-1"
                         prop.children [
