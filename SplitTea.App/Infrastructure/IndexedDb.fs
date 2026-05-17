@@ -42,6 +42,15 @@ let clearAllEvents () : Async<unit> =
         ()
     }
 
+let deleteEventsBySpace (spaceId: string) : Async<unit> =
+    async {
+        let! db' = db |> Async.AwaitPromise
+        let! records = (db'?getAllFromIndex("events", "spaceId", spaceId) : JS.Promise<obj[]>) |> Async.AwaitPromise
+        for record in records do
+            let! _ = (db'?delete("events", record?id) : JS.Promise<unit>) |> Async.AwaitPromise
+            ()
+    }
+
 let markSynced (id: string) : Async<unit> =
     async {
         let! db' = db |> Async.AwaitPromise

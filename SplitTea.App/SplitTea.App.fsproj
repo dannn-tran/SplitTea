@@ -19,6 +19,7 @@
     <Compile Include="UI/Icons.fs" />
     <Compile Include="UI/Pages/Space.fs" />
     <Compile Include="UI/Pages/Analytics.fs" />
+    <Compile Include="UI/Pages/CreateSpace.fs" />
     <Compile Include="UI/Pages/Profile.fs" />
     <Compile Include="UI/Pages/ExpenseForm.fs" />
     <Compile Include="UI/Pages/SettlementForm.fs" />

@@ -42,6 +42,11 @@ let plus =
         [ svg.d "M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2Z" ]
     ]
 
+let chevronDown =
+    icon16 [
+        [ svg.d "M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" ]
+    ]
+
 let home =
     icon20 [
         [ svg.custom ("fillRule", "evenodd"); svg.clipRule.evenodd

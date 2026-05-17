@@ -25,6 +25,26 @@ let private mkEnvelope (spaceId: SpaceId) (actorId: MemberId) (payload: 'P) : Ev
         Payload    = payload
     }
 
+let createSpace (name: string) (currency: string) (memberName: string) (userId: UserId option) : Async<SpaceId> =
+    async {
+        let spaceId  = SpaceId  (System.Guid.NewGuid())
+        let memberId = MemberId (System.Guid.NewGuid())
+        do!
+            SpaceCreated (mkEnvelope spaceId memberId {
+                Name       = name.Trim()
+                Currency   = currency.Trim().ToUpper()
+                CreatedBy  = memberId
+                Categories = defaultCategories
+            })
+            |> Storage.saveEvent
+        do!
+            MemberAdded (mkEnvelope spaceId memberId {
+                Member = { Id = memberId; DisplayName = memberName.Trim(); UserId = userId }
+            })
+            |> Storage.saveEvent
+        return spaceId
+    }
+
 let addExpense
     (spaceId:      SpaceId)
     (actorId:      MemberId)

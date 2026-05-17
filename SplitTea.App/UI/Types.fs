@@ -13,6 +13,15 @@ type Page =
     | Profile
     | AddExpense
     | RecordSettlement
+    | CreateSpace
+
+type CreateSpaceForm = {
+    SpaceNameText : string
+    CurrencyText  : string
+    MemberName    : string
+    IsSubmitting  : bool
+    Error         : string option
+}
 
 type SplitMode = EqualSplit | CustomSplit
 
@@ -74,6 +83,9 @@ type Model = {
     IsEditingProfileName : bool
     ProfileNameText      : string
     ProfileNameError     : string option
+    ShowSpaceSwitcher    : bool
+    KnownSpaces          : Storage.SpaceSummary list
+    CreateSpaceForm      : CreateSpaceForm
 #if DEVMODE
     DevActorId           : MemberId option
 #endif
@@ -129,6 +141,15 @@ type Msg =
     | ProfileNameTextSet of string
     | SaveProfileRename
     | ProfileNameSaved   of Result<unit, string>
+    | SpaceSwitcherToggled
+    | SwitchToSpace          of SpaceId
+    | DeleteSpaceClick
+    | SpaceDeleted           of Result<unit, string>
+    | CreateSpaceNameSet     of string
+    | CreateSpaceCurrencySet of string
+    | CreateSpaceMemberSet   of string
+    | CreateSpaceSubmit
+    | CreateSpaceDone        of Result<SpaceId, string>
 #if DEVMODE
     | DevActorSet              of MemberId
     | DevReset

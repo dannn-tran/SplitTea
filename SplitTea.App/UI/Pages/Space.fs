@@ -226,6 +226,17 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                 ]
                         ]
                     ]
+                    Html.div [
+                        prop.className "border-t border-gray-100 pt-3"
+                        prop.children [
+                            Html.button [
+                                prop.type' "button"
+                                prop.className "w-full text-sm text-red-600 hover:text-red-800 font-medium py-2 transition-colors"
+                                prop.text "Delete Space"
+                                prop.onClick (fun _ -> dispatch UITypes.DeleteSpaceClick)
+                            ]
+                        ]
+                    ]
                 ]
             ]
         ]
@@ -257,7 +268,15 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                     Html.div [
                         prop.className "flex items-center justify-between"
                         prop.children [
-                            Html.h1 [ prop.className "text-2xl font-bold text-gray-900"; prop.text spaceName ]
+                            Html.button [
+                                prop.type' "button"
+                                prop.className "flex items-center gap-1.5 text-2xl font-bold text-gray-900 hover:text-teal-700 transition-colors"
+                                prop.onClick (fun _ -> dispatch UITypes.SpaceSwitcherToggled)
+                                prop.children [
+                                    Html.span [ prop.text spaceName ]
+                                    Icons.chevronDown
+                                ]
+                            ]
                             Html.div [
                                 prop.className "flex items-center gap-1"
                                 prop.children [

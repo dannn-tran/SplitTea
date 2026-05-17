@@ -30,6 +30,9 @@ let private setActiveSpaceId (id: SpaceId) =
     let (SpaceId g) = id
     browserStorage?setItem("activeSpaceId", string g) |> ignore
 
+let private clearActiveSpaceId () =
+    browserStorage?removeItem("activeSpaceId") |> ignore
+
 let private todayStr () =
     let d = System.DateTime.Now
     sprintf "%04d-%02d-%02d" d.Year d.Month d.Day
@@ -71,6 +74,14 @@ let private resolveActor (model: Model) : MemberId =
 #endif
     findActorId model.SpaceState model.Auth
 
+let private emptyCreateSpaceForm : CreateSpaceForm = {
+    SpaceNameText = ""
+    CurrencyText  = ""
+    MemberName    = ""
+    IsSubmitting  = false
+    Error         = None
+}
+
 let private emptyExpenseForm (groupCurrency: string) (memberCount: int) : ExpenseForm = {
     Description      = ""
     AmountText       = ""
@@ -107,6 +118,12 @@ let private emptySettlementForm (memberCount: int) (groupCurrency: string) : Set
 
 let init () : Model * Cmd<Msg> =
     let activeSpaceId = getActiveSpaceId ()
+    // Seed known-spaces list if active space not yet tracked
+    match activeSpaceId with
+    | Some sid ->
+        if not (Storage.getKnownSpaces () |> List.exists (fun s -> s.Id = sid)) then
+            Storage.upsertKnownSpace sid ""
+    | None -> ()
     let model = {
         Auth           = None
         Page           = Loading
@@ -131,6 +148,9 @@ let init () : Model * Cmd<Msg> =
         IsEditingProfileName = false
         ProfileNameText      = ""
         ProfileNameError     = None
+        ShowSpaceSwitcher    = false
+        KnownSpaces          = Storage.getKnownSpaces ()
+        CreateSpaceForm      = emptyCreateSpaceForm
 #if DEVMODE
         DevActorId     = getDevActorId ()
 #endif
@@ -151,7 +171,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 #if DEVMODE
                 elif DevMode.isEnabled () then DevBootstrap
 #endif
-                else SignIn
+                else CreateSpace
             | p -> p
         { model with Auth = Some user; IsAuthLoading = false; Page = page }, Cmd.none
 
@@ -217,6 +237,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | SpaceLoaded (sid, ss) ->
         setActiveSpaceId sid
+        Storage.upsertKnownSpace sid ss.Name
         let syncCmd = Cmd.OfAsync.attempt (fun () -> Sync.pushPending ()) () (fun _ -> SyncDone)
         let fxCmd   =
             Cmd.OfAsync.either
@@ -224,7 +245,8 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                 ()
                 ExchangeRatesLoaded
                 (fun _ -> ExchangeRatesLoaded Map.empty)
-        { model with ActiveSpaceId = Some sid; SpaceState = ss; Page = SpaceOverview }, Cmd.batch [ syncCmd; fxCmd ]
+        { model with ActiveSpaceId = Some sid; SpaceState = ss; Page = SpaceOverview
+                     KnownSpaces = Storage.getKnownSpaces () }, Cmd.batch [ syncCmd; fxCmd ]
 
     | ExchangeRatesLoaded rates ->
         { model with ExchangeRates = rates }, Cmd.none
@@ -688,6 +710,87 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | ProfileNameSaved (Error err) ->
         { model with ProfileNameError = Some err }, Cmd.none
 
+    | SpaceSwitcherToggled ->
+        { model with ShowSpaceSwitcher = not model.ShowSpaceSwitcher }, Cmd.none
+
+    | SwitchToSpace sid ->
+        if model.ActiveSpaceId = Some sid then
+            { model with ShowSpaceSwitcher = false }, Cmd.none
+        else
+            setActiveSpaceId sid
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            { model with ShowSpaceSwitcher = false; ActiveSpaceId = Some sid; Page = SpaceOverview }, cmd
+
+    | DeleteSpaceClick ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let confirmed : bool = emitJsExpr () "window.confirm('Delete this space? All data will be permanently lost.')"
+            if not confirmed then model, Cmd.none
+            else
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Storage.deleteSpace sid)
+                        ()
+                        (fun () -> SpaceDeleted (Ok ()))
+                        (fun ex  -> SpaceDeleted (Error ex.Message))
+                model, cmd
+
+    | SpaceDeleted (Ok ()) ->
+        let remaining = Storage.getKnownSpaces ()
+        match remaining with
+        | next :: _ ->
+            setActiveSpaceId next.Id
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState next.Id (fun ss -> SpaceLoaded (next.Id, ss))
+            { model with ShowSettings = false; KnownSpaces = remaining; ActiveSpaceId = Some next.Id }, cmd
+        | [] ->
+            clearActiveSpaceId ()
+            { model with ShowSettings = false; KnownSpaces = []
+                         ActiveSpaceId = None; SpaceState = SpaceState.Empty; Page = CreateSpace }, Cmd.none
+
+    | SpaceDeleted (Error err) ->
+        { model with Toast = Some $"Delete failed: %s{err}" }, Cmd.none
+
+    | CreateSpaceNameSet text ->
+        { model with CreateSpaceForm = { model.CreateSpaceForm with SpaceNameText = text; Error = None } }, Cmd.none
+
+    | CreateSpaceCurrencySet text ->
+        { model with CreateSpaceForm = { model.CreateSpaceForm with CurrencyText = text; Error = None } }, Cmd.none
+
+    | CreateSpaceMemberSet text ->
+        { model with CreateSpaceForm = { model.CreateSpaceForm with MemberName = text; Error = None } }, Cmd.none
+
+    | CreateSpaceSubmit ->
+        let form = model.CreateSpaceForm
+        let name = form.SpaceNameText.Trim()
+        let cur  = form.CurrencyText.Trim().ToUpper()
+        let mem  = form.MemberName.Trim()
+        if name = "" then
+            { model with CreateSpaceForm = { form with Error = Some "Space name is required." } }, Cmd.none
+        elif cur = "" then
+            { model with CreateSpaceForm = { form with Error = Some "Currency is required." } }, Cmd.none
+        elif mem = "" then
+            { model with CreateSpaceForm = { form with Error = Some "Your name is required." } }, Cmd.none
+        else
+            let userId = model.Auth |> Option.map (fun u -> UserId (System.Guid.Parse u.Id))
+            let cmd =
+                Cmd.OfAsync.either
+                    (fun () -> Commands.createSpace name cur mem userId)
+                    ()
+                    (fun sid -> CreateSpaceDone (Ok sid))
+                    (fun ex  -> CreateSpaceDone (Error ex.Message))
+            { model with CreateSpaceForm = { form with IsSubmitting = true; Error = None } }, cmd
+
+    | CreateSpaceDone (Ok sid) ->
+        let name = model.CreateSpaceForm.SpaceNameText.Trim()
+        Storage.upsertKnownSpace sid name
+        setActiveSpaceId sid
+        let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+        { model with CreateSpaceForm = emptyCreateSpaceForm; ActiveSpaceId = Some sid }, cmd
+
+    | CreateSpaceDone (Error err) ->
+        { model with CreateSpaceForm = { model.CreateSpaceForm with IsSubmitting = false; Error = Some err } }, Cmd.none
+
 #if DEVMODE
     | DevActorSet memberId ->
         setDevActorId memberId
@@ -848,6 +951,66 @@ let private devActorBadge (model: Model) (dispatch: Msg -> unit) =
     ]
 #endif
 
+let private spaceSwitcherSheet (model: Model) (dispatch: Msg -> unit) =
+    Html.div [
+        prop.className "fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+        prop.children [
+            Html.div [
+                prop.className "absolute inset-0 bg-black/40"
+                prop.onClick (fun _ -> dispatch SpaceSwitcherToggled)
+            ]
+            Html.div [
+                prop.className "relative z-10 bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-5 space-y-3"
+                prop.children [
+                    Html.div [
+                        prop.className "flex items-center justify-between"
+                        prop.children [
+                            Html.h2 [ prop.className "text-lg font-bold text-gray-900"; prop.text "Spaces" ]
+                            Html.button [
+                                prop.type' "button"
+                                prop.className "p-1 text-gray-400 hover:text-gray-600 rounded-lg transition-colors text-lg leading-none"
+                                prop.onClick (fun _ -> dispatch SpaceSwitcherToggled)
+                                prop.text "✕"
+                            ]
+                        ]
+                    ]
+                    Html.div [
+                        prop.className "space-y-1"
+                        prop.children (
+                            model.KnownSpaces |> List.map (fun s ->
+                                let isActive = Some s.Id = model.ActiveSpaceId
+                                Html.button [
+                                    prop.type' "button"
+                                    prop.className (
+                                        Styles.cx [
+                                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors"
+                                            if isActive then "bg-teal-50 text-teal-700 font-medium"
+                                            else "text-gray-700 hover:bg-gray-50"
+                                        ])
+                                    prop.onClick (fun _ -> dispatch (SwitchToSpace s.Id))
+                                    prop.children [
+                                        Html.span [ prop.className "flex-1"; prop.text (if s.Name = "" then "(Loading...)" else s.Name) ]
+                                        if isActive then Icons.check
+                                    ]
+                                ])
+                        )
+                    ]
+                    Html.button [
+                        prop.type' "button"
+                        prop.className "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-teal-600 hover:bg-teal-50 font-medium transition-colors"
+                        prop.onClick (fun _ ->
+                            dispatch SpaceSwitcherToggled
+                            dispatch (NavigateTo CreateSpace))
+                        prop.children [
+                            Icons.plus
+                            Html.span [ prop.text "Create new space" ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+
 let private navTab (label: string) (icon: ReactElement) (active: bool) (onClick: unit -> unit) =
     Html.button [
         prop.type' "button"
@@ -903,6 +1066,7 @@ let view (model: Model) (dispatch: Msg -> unit) =
             ProfilePage.view displayName email model dispatch
         | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm model.EditingExpenseId.IsSome dispatch
         | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
+        | CreateSpace         -> CreateSpacePage.view model.ActiveSpaceId.IsSome model dispatch
 
     let toast =
         match model.Toast with
@@ -918,13 +1082,14 @@ let view (model: Model) (dispatch: Msg -> unit) =
             ]
         | None -> Html.none
 
-    let nav = if isSpaceTab then bottomNav model dispatch else Html.none
+    let nav      = if isSpaceTab then bottomNav model dispatch else Html.none
+    let switcher = if model.ShowSpaceSwitcher then spaceSwitcherSheet model dispatch else Html.none
 
 #if DEVMODE
     if DevMode.isEnabled () && not model.SpaceState.Members.IsEmpty then
-        Html.div [ prop.children [ inner; nav; devActorBadge model dispatch; toast ] ]
+        Html.div [ prop.children [ inner; nav; devActorBadge model dispatch; switcher; toast ] ]
     else
-        Html.div [ prop.children [ inner; nav; toast ] ]
+        Html.div [ prop.children [ inner; nav; switcher; toast ] ]
 #else
-    Html.div [ prop.children [ inner; nav; toast ] ]
+    Html.div [ prop.children [ inner; nav; switcher; toast ] ]
 #endif

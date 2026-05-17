@@ -71,3 +71,52 @@ let getPendingEvents () : Async<(SpaceId * SpaceEvent) list> =
 
 let markSynced (eventId: EventId) : Async<unit> =
     IndexedDb.markSynced (eventIdStr eventId)
+
+// ─── Known-space registry (localStorage) ─────────────────────────────────────
+
+type SpaceSummary = { Id: SpaceId; Name: string }
+
+let private localStorage : obj = emitJsExpr () "localStorage"
+let private knownSpacesKey = "knownSpaces"
+
+let private loadKnownSpaces () : SpaceSummary list =
+    let raw : obj = localStorage?getItem(knownSpacesKey)
+    if isNull raw then []
+    else
+        try
+            let arr = jsonParse (string raw) |> unbox<obj[]>
+            arr |> Array.choose (fun o ->
+                try Some { Id = SpaceId (System.Guid.Parse (string o?id)); Name = string o?name }
+                with _ -> None)
+            |> Array.toList
+        with _ -> []
+
+let private saveKnownSpaces (summaries: SpaceSummary list) : unit =
+    let arr =
+        summaries
+        |> List.map (fun s ->
+            let (SpaceId g) = s.Id
+            createObj [ "id" ==> string g; "name" ==> s.Name ])
+        |> List.toArray
+        |> box
+    localStorage?setItem(knownSpacesKey, jsonStringify arr) |> ignore
+
+let getKnownSpaces () : SpaceSummary list = loadKnownSpaces ()
+
+let upsertKnownSpace (id: SpaceId) (name: string) : unit =
+    let existing = loadKnownSpaces ()
+    let updated =
+        if existing |> List.exists (fun s -> s.Id = id) then
+            existing |> List.map (fun s -> if s.Id = id then { s with Name = name } else s)
+        else
+            existing @ [{ Id = id; Name = name }]
+    saveKnownSpaces updated
+
+let removeKnownSpace (id: SpaceId) : unit =
+    loadKnownSpaces () |> List.filter (fun s -> s.Id <> id) |> saveKnownSpaces
+
+let deleteSpace (spaceId: SpaceId) : Async<unit> =
+    async {
+        do! IndexedDb.deleteEventsBySpace (spaceIdStr spaceId)
+        removeKnownSpace spaceId
+    }
