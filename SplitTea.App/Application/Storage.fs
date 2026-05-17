@@ -44,35 +44,31 @@ let private objKeys (o: obj) : string list =
 // ─── Split encode / decode ────────────────────────────────────────────────────
 
 let private encSplit (split: Split) : obj =
-    let strShares (m: Map<MemberId, decimal>) =
-        m |> Map.toList |> List.map (fun (k, v) -> memberIdStr k ==> decStr v) |> createObj
-    let intShares (m: Map<MemberId, int>) =
-        m |> Map.toList |> List.map (fun (k, v) -> memberIdStr k ==> box v)    |> createObj
+    let strPairs (pairs: (MemberId * decimal) list) =
+        pairs |> List.map (fun (k, v) -> createObj [ "m" ==> memberIdStr k; "v" ==> decStr v ]) |> Array.ofList |> box
+    let intPairs (pairs: (MemberId * int) list) =
+        pairs |> List.map (fun (k, v) -> createObj [ "m" ==> memberIdStr k; "v" ==> box v ]) |> Array.ofList |> box
     match split with
     | Equal members ->
         createObj [
             "type"    ==> "Equal"
             "members" ==> (members |> List.map memberIdStr |> Array.ofList)
         ]
-    | Exact      shares -> createObj [ "type" ==> "Exact";      "shares" ==> strShares shares ]
-    | Percentage shares -> createObj [ "type" ==> "Percentage"; "shares" ==> strShares shares ]
-    | Shares     shares -> createObj [ "type" ==> "Shares";     "shares" ==> intShares shares ]
+    | Exact      shares -> createObj [ "type" ==> "Exact";      "shares" ==> strPairs shares ]
+    | Percentage shares -> createObj [ "type" ==> "Percentage"; "shares" ==> strPairs shares ]
+    | Shares     shares -> createObj [ "type" ==> "Shares";     "shares" ==> intPairs shares ]
 
 let private decSplit (raw: obj) : Split =
-    let readStrShares (s: obj) =
-        objKeys s
-        |> List.map (fun k -> parseMemberId k, parseDec (string s?(k)))
-        |> Map.ofList
-    let readIntShares (s: obj) =
-        objKeys s
-        |> List.map (fun k -> parseMemberId k, int (string s?(k)))
-        |> Map.ofList
+    let strPairs (arr: obj[]) =
+        arr |> Array.toList |> List.map (fun o -> parseMemberId (string o?m), parseDec (string o?v))
+    let intPairs (arr: obj[]) =
+        arr |> Array.toList |> List.map (fun o -> parseMemberId (string o?m), int (string o?v))
     match string raw?``type`` with
     | "Equal" ->
         Equal (raw?members |> unbox<string[]> |> Array.toList |> List.map parseMemberId)
-    | "Exact"      -> Exact      (readStrShares raw?shares)
-    | "Percentage" -> Percentage (readStrShares raw?shares)
-    | "Shares"     -> Shares     (readIntShares raw?shares)
+    | "Exact"      -> Exact      (strPairs (raw?shares |> unbox<obj[]>))
+    | "Percentage" -> Percentage (strPairs (raw?shares |> unbox<obj[]>))
+    | "Shares"     -> Shares     (intPairs (raw?shares |> unbox<obj[]>))
     | t -> failwith $"Unknown split type: {t}"
 
 // ─── Patch encode / decode ────────────────────────────────────────────────────

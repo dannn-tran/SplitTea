@@ -16,19 +16,19 @@ let private assertError (expected: ValidationError) result =
         Assert.True(List.contains expected errs, sprintf "Expected %A in %A" expected errs)
 
 [<Fact>]
-let ``GroupCreated returns Ok`` () =
-    assertOk (Validation.validateEvent GroupState.Empty groupCreated)
+let ``SpaceCreated returns Ok`` () =
+    assertOk (Validation.validateEvent SpaceState.Empty spaceCreated)
 
 [<Fact>]
 let ``MemberAdded returns Ok`` () =
-    let state = Reducer.reduce GroupState.Empty groupCreated
+    let state = Reducer.reduce SpaceState.Empty spaceCreated
     assertOk (Validation.validateEvent state aliceAdded)
 
 module ``validateEvent ExpenseAdded`` =
-    let private basePayload = {
+    let private basePayload : ExpenseAddedPayload = {
         ExpenseId = expense1Id; Description = "Test"
         PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
-        Split = Equal [aliceId; bobId]; Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
+        Split = Equal [aliceId; bobId]; Date = date 2024 1 1; Category = None; Notes = None
     }
 
     let private validate payload =
@@ -67,23 +67,23 @@ module ``validateEvent ExpenseAdded`` =
 
     [<Fact>]
     let ``SplitMustHaveMembers for empty Exact split`` () =
-        assertError SplitMustHaveMembers (validate { basePayload with Split = Exact Map.empty })
+        assertError SplitMustHaveMembers (validate { basePayload with Split = Exact [] })
 
     [<Fact>]
     let ``ExactSplitSumMismatch when amounts don't sum to expense total`` () =
-        let split = Exact (Map.ofList [aliceId, 3m; bobId, 3m])  // 6 != 10
+        let split = Exact [aliceId, 3m; bobId, 3m]  // 6 != 10
         assertError (ExactSplitSumMismatch (10m, 6m))
             (validate { basePayload with Split = split })
 
     [<Fact>]
     let ``PercentageSumMismatch when percentages don't sum to 100`` () =
-        let split = Percentage (Map.ofList [aliceId, 60m; bobId, 30m])  // 90 != 100
+        let split = Percentage [aliceId, 60m; bobId, 30m]  // 90 != 100
         assertError (PercentageSumMismatch (100m, 90m))
             (validate { basePayload with Split = split })
 
     [<Fact>]
     let ``SharesMustBePositive for zero share`` () =
-        let split = Shares (Map.ofList [aliceId, 1; bobId, 0])
+        let split = Shares [aliceId, 1; bobId, 0]
         assertError SharesMustBePositive (validate { basePayload with Split = split })
 
     [<Fact>]
@@ -93,10 +93,10 @@ module ``validateEvent ExpenseAdded`` =
         assertError (UnknownMember unknownMemberId) result
 
 module ``validateEvent ExpenseCorrected`` =
-    let private baseCorrection = {
+    let private baseCorrection : ExpenseCorrectedPayload = {
         OriginalExpenseId = expense1Id
         Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
-        PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; ContextId = Unchanged; Reason = None
+        PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; Reason = None
     }
 
     let private stateWithExpense1 () =
@@ -131,14 +131,14 @@ module ``validateEvent ExpenseCorrected`` =
         let exactExpense = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "Exact"
             PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
-            Split = Exact (Map.ofList [aliceId, 5m; bobId, 5m])
-            Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
+            Split = Exact [aliceId, 5m; bobId, 5m]
+            Date = date 2024 1 1; Category = None; Notes = None
         })
         let state = makeBaseState () |> fun s -> Reducer.reduce s exactExpense
         let correction = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
             Description = None; PaidAmount = Some 20m; PaidCurrency = None; ExchangeRate = Unchanged
-            PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; ContextId = Unchanged; Reason = None
+            PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; Reason = None
         })
         assertError (ExactSplitSumMismatch (20m, 10m))
             (Validation.validateEvent state correction)
@@ -171,7 +171,7 @@ module ``validateEvent ExpenseDeleted`` =
         assertError (DeletedExpense expense1Id) result
 
 module ``validateEvent SettlementRecorded`` =
-    let private basePayload = {
+    let private basePayload : SettlementRecordedPayload = {
         SettlementId = settlement1Id
         From = carolId; To = aliceId
         Amount = 42m; Currency = "GBP"; ExchangeRate = None

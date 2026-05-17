@@ -2,7 +2,7 @@ module SplitTea.Core.Tests.Helpers
 
 open SplitTea.Core
 
-let groupId = GroupId  (System.Guid.Parse "00000000-0000-0000-0000-000000000010")
+let spaceId = SpaceId  (System.Guid.Parse "00000000-0000-0000-0000-000000000010")
 let aliceId = MemberId (System.Guid.Parse "00000000-0000-0000-0000-000000000001")
 let bobId   = MemberId (System.Guid.Parse "00000000-0000-0000-0000-000000000002")
 let carolId = MemberId (System.Guid.Parse "00000000-0000-0000-0000-000000000003")
@@ -22,7 +22,7 @@ let settlement2Id = SettlementId (System.Guid.Parse "00000000-0000-0000-0002-000
 
 let envelope actorId seq payload : EventEnvelope<_> = {
     Id         = EventId System.Guid.Empty
-    GroupId    = groupId
+    SpaceId    = spaceId
     Sequence   = int64 seq
     ActorId    = actorId
     OccurredAt = System.DateTimeOffset.UnixEpoch
@@ -32,8 +32,8 @@ let envelope actorId seq payload : EventEnvelope<_> = {
 
 let date y m d = System.DateOnly(y, m, d)
 
-let groupCreated = GroupCreated (envelope aliceId 1 {
-    Name = "Trip"; Currency = "GBP"; CreatedBy = aliceId
+let spaceCreated = SpaceCreated (envelope aliceId 1 {
+    Name = "Trip"; Currency = "GBP"; CreatedBy = aliceId; Categories = []
 })
 
 let aliceAdded = MemberAdded (envelope aliceId 2 { Member = alice })
@@ -48,21 +48,21 @@ let carolAdded = MemberAdded (envelope aliceId 4 { Member = carol })
 let workedExpense1 = ExpenseAdded (envelope aliceId 5 {
     ExpenseId = expense1Id; Description = "Dinner"
     PaidAmount = 84m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
-    Split = Equal [aliceId; carolId]; Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
+    Split = Equal [aliceId; carolId]; Date = date 2024 1 1; Category = None; Notes = None
 })
 
 let workedExpense2 = ExpenseAdded (envelope bobId 6 {
     ExpenseId = expense2Id; Description = "Hotel"
     PaidAmount = 164m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = bobId
-    Split = Equal [bobId; carolId]; Date = date 2024 1 2; Category = None; Notes = None; ContextId = None
+    Split = Equal [bobId; carolId]; Date = date 2024 1 2; Category = None; Notes = None
 })
 
 let makeBaseState () =
-    Reducer.replayEvents [ groupCreated; aliceAdded; bobAdded; carolAdded ]
+    Reducer.replayEvents [ spaceCreated; aliceAdded; bobAdded; carolAdded ]
 
 let makeWorkedState () =
     Reducer.replayEvents [
-        groupCreated; aliceAdded; bobAdded; carolAdded
+        spaceCreated; aliceAdded; bobAdded; carolAdded
         workedExpense1; workedExpense2
     ]
 

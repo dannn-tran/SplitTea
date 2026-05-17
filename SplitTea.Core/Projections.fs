@@ -60,12 +60,12 @@ module Projections =
             let payerShare = Map.tryFind paidBy base' |> Option.defaultValue 0m
             Map.add paidBy (payerShare + remainder) base'
         | Exact shares ->
-            shares
+            shares |> Map.ofList
         | Percentage shares ->
-            shares |> Map.map (fun _ pct -> round2 (amount * pct / 100m))
+            shares |> List.map (fun (m, pct) -> m, round2 (amount * pct / 100m)) |> Map.ofList
         | Shares shares ->
-            let total = shares |> Map.toSeq |> Seq.sumBy snd
-            shares |> Map.map (fun _ s -> round2 (amount * decimal s / decimal total))
+            let total = shares |> List.sumBy snd
+            shares |> List.map (fun (m, s) -> m, round2 (amount * decimal s / decimal total)) |> Map.ofList
 
     let private addTo (memberId: MemberId) (delta: decimal) (m: Map<MemberId, decimal>) =
         let current = Map.tryFind memberId m |> Option.defaultValue 0m

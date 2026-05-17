@@ -39,26 +39,25 @@ module Validation =
             if List.isEmpty ms then [ SplitMustHaveMembers ]
             else ms |> List.collect (checkMember members)
         | Exact shares ->
-            if Map.isEmpty shares then [ SplitMustHaveMembers ]
+            if List.isEmpty shares then [ SplitMustHaveMembers ]
             else
-                let memberErrs = shares |> Map.toList |> List.collect (fun (m, _) -> checkMember members m)
-                let total = shares |> Map.toSeq |> Seq.sumBy snd
+                let memberErrs = shares |> List.collect (fun (m, _) -> checkMember members m)
+                let total = shares |> List.sumBy snd
                 let sumErr = if total <> amount then [ ExactSplitSumMismatch(amount, total) ] else []
                 memberErrs @ sumErr
         | Percentage shares ->
-            if Map.isEmpty shares then [ SplitMustHaveMembers ]
+            if List.isEmpty shares then [ SplitMustHaveMembers ]
             else
-                let memberErrs = shares |> Map.toList |> List.collect (fun (m, _) -> checkMember members m)
-                let total = shares |> Map.toSeq |> Seq.sumBy snd
+                let memberErrs = shares |> List.collect (fun (m, _) -> checkMember members m)
+                let total = shares |> List.sumBy snd
                 let sumErr = if total <> 100m then [ PercentageSumMismatch(100m, total) ] else []
                 memberErrs @ sumErr
         | Shares shares ->
-            if Map.isEmpty shares then [ SplitMustHaveMembers ]
+            if List.isEmpty shares then [ SplitMustHaveMembers ]
             else
-                let memberErrs = shares |> Map.toList |> List.collect (fun (m, _) -> checkMember members m)
+                let memberErrs = shares |> List.collect (fun (m, _) -> checkMember members m)
                 let shareErrs =
                     shares
-                    |> Map.toList
                     |> List.choose (fun (_, s) -> if s <= 0 then Some SharesMustBePositive else None)
                     |> List.distinct
                 memberErrs @ shareErrs

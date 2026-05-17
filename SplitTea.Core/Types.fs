@@ -23,9 +23,9 @@ type CategoryState = {
 
 type Split =
     | Equal      of members: MemberId list
-    | Exact      of shares: Map<MemberId, Amount>
-    | Percentage of shares: Map<MemberId, decimal>
-    | Shares     of shares: Map<MemberId, int>
+    | Exact      of shares: (MemberId * Amount) list
+    | Percentage of shares: (MemberId * decimal) list
+    | Shares     of shares: (MemberId * int) list
 
 /// Used in correction events to distinguish "leave unchanged" from "explicitly clear to None".
 type Patch<'a> =

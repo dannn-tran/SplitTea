@@ -21,10 +21,10 @@ module ``computeNetPositions`` =
             ExpenseId = expense3Id; Description = "Rounding test"
             PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
             Split = Equal [aliceId; bobId; carolId]
-            Date = date 2024 1 1; Category = None; Notes = None; ContextId = None
+            Date = date 2024 1 1; Category = None; Notes = None
         })
         let state = Reducer.replayEvents [
-            groupCreated; aliceAdded; bobAdded; carolAdded; expense
+            spaceCreated; aliceAdded; bobAdded; carolAdded; expense
         ]
         let positions = computeNetPositions state
         Assert.Equal(6.68m,  (findPosition aliceId positions).Amount)
@@ -48,7 +48,7 @@ module ``computeNetPositions`` =
             Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
         })
         let state = Reducer.replayEvents [
-            groupCreated; aliceAdded; bobAdded; carolAdded
+            spaceCreated; aliceAdded; bobAdded; carolAdded
             workedExpense1; workedExpense2; settle
         ]
         let positions = computeNetPositions state
