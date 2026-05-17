@@ -86,6 +86,11 @@ let init () : Model * Cmd<Msg> =
         Page           = Loading
         ActiveSpaceId  = activeSpaceId
         SpaceState     = SpaceState.Empty
+        CategoryFilter = ""
+        NewCategory    = ""
+        EditingCategory = None
+        EditCategoryName = ""
+        CategoryError  = None
         ExchangeRates  = Map.empty
         SignInEmail    = ""
         SignInError    = None
@@ -143,6 +148,18 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | SignInEmailSet email ->
         { model with SignInEmail = email; SignInError = None }, Cmd.none
 
+    | CategoryFilterSet category ->
+        { model with CategoryFilter = category }, Cmd.none
+
+    | NewCategorySet name ->
+        { model with NewCategory = name; CategoryError = None }, Cmd.none
+
+    | StartCategoryRename name ->
+        { model with EditingCategory = Some name; EditCategoryName = name; CategoryError = None }, Cmd.none
+
+    | EditCategoryNameSet name ->
+        { model with EditCategoryName = name; CategoryError = None }, Cmd.none
+
     | SignInSubmit ->
         let cmd =
             Cmd.OfAsync.perform
@@ -177,6 +194,73 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | SpaceNotFound ->
         { model with Page = SignIn }, Cmd.none
+
+    | AddCategorySubmit ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let name = model.NewCategory.Trim()
+            if name = "" then
+                { model with CategoryError = Some "Category name is required." }, Cmd.none
+            elif model.SpaceState.Categories |> Map.containsKey name then
+                { model with CategoryError = Some "Category already exists." }, Cmd.none
+            else
+                let actorId = findActorId model.SpaceState model.Auth
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.addCategory sid actorId name)
+                        ()
+                        (fun () -> CategorySaved (Ok ()))
+                        (fun ex -> CategorySaved (Error ex.Message))
+                { model with IsAuthLoading = true; CategoryError = None }, cmd
+
+    | SaveCategoryRename ->
+        match model.ActiveSpaceId, model.EditingCategory with
+        | Some sid, Some oldName ->
+            let newName = model.EditCategoryName.Trim()
+            if newName = "" then
+                { model with CategoryError = Some "Category name is required." }, Cmd.none
+            elif oldName <> newName && model.SpaceState.Categories |> Map.containsKey newName then
+                { model with CategoryError = Some "Category already exists." }, Cmd.none
+            else
+                let actorId = findActorId model.SpaceState model.Auth
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.renameCategory sid actorId oldName newName)
+                        ()
+                        (fun () -> CategorySaved (Ok ()))
+                        (fun ex -> CategorySaved (Error ex.Message))
+                { model with IsAuthLoading = true; CategoryError = None }, cmd
+        | _ -> model, Cmd.none
+
+    | ArchiveCategory name ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let actorId = findActorId model.SpaceState model.Auth
+            let cmd =
+                Cmd.OfAsync.either
+                    (fun () -> Commands.archiveCategory sid actorId name)
+                    ()
+                    (fun () -> CategorySaved (Ok ()))
+                    (fun ex -> CategorySaved (Error ex.Message))
+            { model with IsAuthLoading = true; CategoryError = None }, cmd
+
+    | CategorySaved (Ok ()) ->
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            { model with
+                IsAuthLoading = false
+                NewCategory = ""
+                EditingCategory = None
+                EditCategoryName = ""
+                CategoryError = None }, cmd
+        | None ->
+            { model with IsAuthLoading = false }, Cmd.none
+
+    | CategorySaved (Error err) ->
+        { model with IsAuthLoading = false; CategoryError = Some err }, Cmd.none
 
     | NavigateTo page ->
         { model with Page = page }, Cmd.none
@@ -426,7 +510,7 @@ let view (model: Model) (dispatch: Msg -> unit) =
 #if DEVMODE
     | DevBootstrap        -> devBootstrapView model dispatch
 #endif
-    | SpaceOverview       -> SpacePage.view model.SpaceState dispatch
+    | SpaceOverview       -> SpacePage.view model.SpaceState model dispatch
     | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm dispatch
     | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
     | Analytics           -> loadingView ()  // placeholder until analytics page is built

@@ -16,6 +16,11 @@ type Member = {
     UserId: UserId option
 }
 
+type CategoryState = {
+    Name       : string
+    IsArchived : bool
+}
+
 type Split =
     | Equal      of members: MemberId list
     | Exact      of shares: Map<MemberId, Amount>

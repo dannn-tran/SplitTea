@@ -47,6 +47,11 @@ type Model = {
     Page           : Page
     ActiveSpaceId  : SpaceId option
     SpaceState     : SpaceState
+    CategoryFilter : string
+    NewCategory    : string
+    EditingCategory : string option
+    EditCategoryName : string
+    CategoryError  : string option
     ExchangeRates  : Map<string, decimal>  // base = group currency → other currencies
     SignInEmail    : string
     SignInError    : string option
@@ -78,5 +83,13 @@ type Msg =
     | SettlementSaved      of Result<unit, string>
     | SpaceStateUpdated    of SpaceState
     | RemoteEventReceived  of SpaceId
+    | CategoryFilterSet    of string
+    | NewCategorySet       of string
+    | AddCategorySubmit
+    | StartCategoryRename  of string
+    | EditCategoryNameSet  of string
+    | SaveCategoryRename
+    | ArchiveCategory      of string
+    | CategorySaved        of Result<unit, string>
     | SyncDone
     | ExchangeRatesLoaded  of Map<string, decimal>

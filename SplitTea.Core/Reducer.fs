@@ -19,6 +19,7 @@ type SpaceState = {
     Name        : string
     Currency    : CurrencyCode
     Members     : Map<MemberId, Member>
+    Categories  : Map<string, CategoryState>
     Expenses    : Map<ExpenseId, ExpenseState>
     Settlements : SettlementRecordedPayload list
 }
@@ -29,6 +30,7 @@ module SpaceState =
         Name        = ""
         Currency    = ""
         Members     = Map.empty
+        Categories  = Map.empty
         Expenses    = Map.empty
         Settlements = []
     }
@@ -38,13 +40,43 @@ module Reducer =
         match event with
         | SpaceCreated e ->
             let p = e.Payload
+            let categories =
+                p.Categories
+                |> List.map (fun name -> name, { Name = name; IsArchived = false })
+                |> Map.ofList
             { SpaceState.Empty with
-                SpaceId  = e.SpaceId
-                Name     = p.Name
-                Currency = p.Currency }
+                SpaceId    = e.SpaceId
+                Name       = p.Name
+                Currency   = p.Currency
+                Categories = categories }
         | MemberAdded e ->
             let m = e.Payload.Member
             { state with Members = Map.add m.Id m state.Members }
+        | CategoryAdded e ->
+            let name = e.Payload.Name.Trim()
+            if name = "" then state
+            else
+                { state with Categories = Map.add name { Name = name; IsArchived = false } state.Categories }
+        | CategoryRenamed e ->
+            let oldName = e.Payload.OldName.Trim()
+            let newName = e.Payload.NewName.Trim()
+            if oldName = "" || newName = "" || oldName = newName then state
+            else
+                let categories =
+                    state.Categories
+                    |> Map.remove oldName
+                    |> Map.add newName { Name = newName; IsArchived = false }
+                let expenses =
+                    state.Expenses
+                    |> Map.map (fun _ ex ->
+                        if ex.Category = Some oldName then { ex with Category = Some newName } else ex)
+                { state with Categories = categories; Expenses = expenses }
+        | CategoryArchived e ->
+            let name = e.Payload.Name.Trim()
+            match Map.tryFind name state.Categories with
+            | None -> state
+            | Some cat ->
+                { state with Categories = Map.add name { cat with IsArchived = true } state.Categories }
         | ExpenseAdded e ->
             let p = e.Payload
             let expense = {

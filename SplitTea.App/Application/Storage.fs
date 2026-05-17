@@ -114,9 +114,20 @@ let private encPayload (event: SpaceEvent) : string * obj =
             "name"      ==> p.Name
             "currency"  ==> p.Currency
             "createdBy" ==> memberIdStr p.CreatedBy
+            "categories" ==> (p.Categories |> Array.ofList)
         ]
     | MemberAdded env ->
         "MemberAdded", createObj [ "member" ==> encMember env.Payload.Member ]
+    | CategoryAdded env ->
+        "CategoryAdded", createObj [ "name" ==> env.Payload.Name ]
+    | CategoryRenamed env ->
+        let p = env.Payload
+        "CategoryRenamed", createObj [
+            "oldName" ==> p.OldName
+            "newName" ==> p.NewName
+        ]
+    | CategoryArchived env ->
+        "CategoryArchived", createObj [ "name" ==> env.Payload.Name ]
     | ExpenseAdded env ->
         let p = env.Payload
         "ExpenseAdded", createObj [
@@ -174,6 +185,9 @@ let private getEnvFields (event: SpaceEvent) =
     match event with
     | SpaceCreated       e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
     | MemberAdded        e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | CategoryAdded      e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | CategoryRenamed    e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
+    | CategoryArchived   e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
     | ExpenseAdded       e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
     | ExpenseCorrected   e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
     | ExpenseDeleted     e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
@@ -222,12 +236,24 @@ let private fromStored (raw: obj) : SpaceEvent option =
         match string raw?eventType with
         | "SpaceCreated" ->
             SpaceCreated (mkEnv raw {
-                Name      = string p?name
-                Currency  = string p?currency
-                CreatedBy = parseMemberId (string p?createdBy)
+                Name       = string p?name
+                Currency   = string p?currency
+                CreatedBy  = parseMemberId (string p?createdBy)
+                Categories =
+                    if isNull p?categories then []
+                    else p?categories |> unbox<string[]> |> Array.toList
             }) |> Some
         | "MemberAdded" ->
             MemberAdded (mkEnv raw { Member = decMember p?``member`` }) |> Some
+        | "CategoryAdded" ->
+            CategoryAdded (mkEnv raw { Name = string p?name }) |> Some
+        | "CategoryRenamed" ->
+            CategoryRenamed (mkEnv raw {
+                OldName = string p?oldName
+                NewName = string p?newName
+            }) |> Some
+        | "CategoryArchived" ->
+            CategoryArchived (mkEnv raw { Name = string p?name }) |> Some
         | "ExpenseAdded" ->
             // Migration: old events stored amount/currency; new events store paidAmount/paidCurrency/exchangeRate
             let isLegacy = isNull p?paidAmount

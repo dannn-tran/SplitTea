@@ -6,18 +6,6 @@ open UITypes
 
 let private inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
 
-let private categories = [
-    ""
-    "Food & Drink"
-    "Transport"
-    "Accommodation"
-    "Entertainment"
-    "Shopping"
-    "Utilities"
-    "Health"
-    "Other"
-]
-
 let private field (label: string) (input: ReactElement) : ReactElement =
     Html.div [
         prop.className "space-y-1"
@@ -39,6 +27,12 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
         |> Map.toList
         |> List.map snd
         |> List.sortBy (fun m -> m.DisplayName)
+    let categories =
+        state.Categories
+        |> Map.toList
+        |> List.map snd
+        |> List.filter (fun c -> not c.IsArchived)
+        |> List.sortBy (fun c -> c.Name)
 
     let set f = dispatch (ExpenseFormSet (f form))
     let isForeignCurrency = form.Currency <> state.Currency
@@ -131,12 +125,13 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                             prop.value form.Category
                             prop.onChange (fun (v: string) -> set (fun f -> { f with Category = v }))
                             prop.children (
-                                categories |> List.map (fun c ->
+                                Html.option [ prop.value ""; prop.text "— None —" ]
+                                :: (categories |> List.map (fun c ->
                                     Html.option [
-                                        prop.value c
-                                        prop.text (if c = "" then "— None —" else c)
+                                        prop.value c.Name
+                                        prop.text c.Name
                                     ]
-                                )
+                                ))
                             )
                         ])
                     field "Date"

@@ -11,13 +11,27 @@ type EventEnvelope<'Payload> = {
 }
 
 type SpaceCreatedPayload = {
-    Name: string
-    Currency: CurrencyCode
-    CreatedBy: MemberId
+    Name       : string
+    Currency   : CurrencyCode
+    CreatedBy  : MemberId
+    Categories : string list
 }
 
 type MemberAddedPayload = {
     Member: Member
+}
+
+type CategoryAddedPayload = {
+    Name: string
+}
+
+type CategoryRenamedPayload = {
+    OldName: string
+    NewName: string
+}
+
+type CategoryArchivedPayload = {
+    Name: string
 }
 
 type ExpenseAddedPayload = {
@@ -66,6 +80,9 @@ type SettlementRecordedPayload = {
 type SpaceEvent =
     | SpaceCreated       of EventEnvelope<SpaceCreatedPayload>
     | MemberAdded        of EventEnvelope<MemberAddedPayload>
+    | CategoryAdded      of EventEnvelope<CategoryAddedPayload>
+    | CategoryRenamed    of EventEnvelope<CategoryRenamedPayload>
+    | CategoryArchived   of EventEnvelope<CategoryArchivedPayload>
     | ExpenseAdded       of EventEnvelope<ExpenseAddedPayload>
     | ExpenseCorrected   of EventEnvelope<ExpenseCorrectedPayload>
     | ExpenseDeleted     of EventEnvelope<ExpenseDeletedPayload>

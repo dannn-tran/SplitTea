@@ -23,9 +23,10 @@ let createLocalSpace () : Async<SpaceId> =
 
         do!
             SpaceCreated (mkEnvelope spaceId memberId {
-                Name = DevMode.fakeSpaceName
-                Currency = "SGD"
-                CreatedBy = memberId
+                Name       = DevMode.fakeSpaceName
+                Currency   = "SGD"
+                CreatedBy  = memberId
+                Categories = Commands.defaultCategories
             })
             |> Storage.saveEvent
 

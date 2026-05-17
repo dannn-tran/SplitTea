@@ -2,6 +2,17 @@ module Commands
 
 open SplitTea.Core
 
+let defaultCategories = [
+    "Food & Drink"
+    "Transport"
+    "Accommodation"
+    "Entertainment"
+    "Shopping"
+    "Utilities"
+    "Health"
+    "Other"
+]
+
 let private mkEnvelope (spaceId: SpaceId) (actorId: MemberId) (payload: 'P) : EventEnvelope<'P> =
     let ts = System.DateTimeOffset.UtcNow
     {
@@ -39,6 +50,34 @@ let addExpense
         Category     = category
         Notes        = notes
     })
+    |> Storage.saveEvent
+
+let addCategory
+    (spaceId: SpaceId)
+    (actorId: MemberId)
+    (name: string)
+    : Async<unit> =
+    CategoryAdded (mkEnvelope spaceId actorId { Name = name.Trim() })
+    |> Storage.saveEvent
+
+let renameCategory
+    (spaceId: SpaceId)
+    (actorId: MemberId)
+    (oldName: string)
+    (newName: string)
+    : Async<unit> =
+    CategoryRenamed (mkEnvelope spaceId actorId {
+        OldName = oldName.Trim()
+        NewName = newName.Trim()
+    })
+    |> Storage.saveEvent
+
+let archiveCategory
+    (spaceId: SpaceId)
+    (actorId: MemberId)
+    (name: string)
+    : Async<unit> =
+    CategoryArchived (mkEnvelope spaceId actorId { Name = name.Trim() })
     |> Storage.saveEvent
 
 let recordSettlement

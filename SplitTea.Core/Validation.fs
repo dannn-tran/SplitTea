@@ -3,6 +3,8 @@ namespace SplitTea.Core
 type ValidationError =
     | UnknownMember         of MemberId
     | UnknownExpense        of ExpenseId
+    | UnknownCategory       of string
+    | ArchivedCategory      of string
     | DeletedExpense        of ExpenseId
     | AmountMustBePositive
     | SplitMustHaveMembers
@@ -21,6 +23,15 @@ module Validation =
 
     let private checkMember (members: Map<MemberId, Member>) (id: MemberId) =
         if Map.containsKey id members then [] else [ UnknownMember id ]
+
+    let private checkCategory (categories: Map<string, CategoryState>) (category: string option) =
+        match category with
+        | None -> []
+        | Some c ->
+            match Map.tryFind c categories with
+            | None -> [ UnknownCategory c ]
+            | Some cat when cat.IsArchived -> [ ArchivedCategory c ]
+            | Some _ -> []
 
     let private checkSplit (split: Split) (members: Map<MemberId, Member>) (amount: Amount) =
         match split with
@@ -62,6 +73,7 @@ module Validation =
                 checkAmount p.PaidAmount
                 @ checkMember state.Members p.PaidBy
                 @ checkSplit p.Split state.Members p.PaidAmount
+                @ checkCategory state.Categories p.Category
             | ExpenseCorrected e ->
                 let p = e.Payload
                 match Map.tryFind p.OriginalExpenseId state.Expenses with
@@ -72,11 +84,17 @@ module Validation =
                     let effectiveSplit  = p.Split      |> Option.defaultValue ex.Split
                     let amountErrs  = p.PaidAmount |> Option.map checkAmount                 |> Option.defaultValue []
                     let paidByErrs  = p.PaidBy     |> Option.map (checkMember state.Members) |> Option.defaultValue []
+                    let effectiveCategory =
+                        match p.Category with
+                        | Unchanged -> ex.Category
+                        | Clear     -> None
+                        | SetTo v   -> Some v
+                    let categoryErrs = checkCategory state.Categories effectiveCategory
                     let splitErrs =
                         match p.Split, p.PaidAmount with
                         | None, None -> []
                         | _          -> checkSplit effectiveSplit state.Members effectiveAmount
-                    amountErrs @ paidByErrs @ splitErrs
+                    amountErrs @ paidByErrs @ splitErrs @ categoryErrs
             | ExpenseDeleted e ->
                 let p = e.Payload
                 match Map.tryFind p.ExpenseId state.Expenses with
@@ -89,5 +107,8 @@ module Validation =
                 @ checkMember state.Members p.To
                 @ (if p.From = p.To then [ SelfSettlement ] else [])
                 @ checkAmount p.Amount
+            | CategoryAdded _ -> []
+            | CategoryRenamed _ -> []
+            | CategoryArchived _ -> []
 
         if List.isEmpty errors then Ok event else Error errors
