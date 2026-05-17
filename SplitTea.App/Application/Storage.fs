@@ -4,302 +4,34 @@ open Fable.Core
 open Fable.Core.JsInterop
 open SplitTea.Core
 
-// ─── Primitive helpers ────────────────────────────────────────────────────────
-
 let private guidStr (g: System.Guid) = string g
+let private spaceIdStr  (SpaceId  g) = guidStr g
+let private memberIdStr (MemberId g) = guidStr g
+let private eventIdStr  (EventId  g) = guidStr g
+let private parseSpaceId (s: string) = SpaceId (System.Guid.Parse s)
 
-let private spaceIdStr      (SpaceId      g) = guidStr g
-let private memberIdStr     (MemberId     g) = guidStr g
-let private expenseIdStr    (ExpenseId    g) = guidStr g
-let private settlementIdStr (SettlementId g) = guidStr g
-let private eventIdStr      (EventId      g) = guidStr g
-
-let private parseMemberId     (s: string) = MemberId     (System.Guid.Parse s)
-let private parseExpenseId    (s: string) = ExpenseId    (System.Guid.Parse s)
-let private parseSettlementId (s: string) = SettlementId (System.Guid.Parse s)
-let private parseSpaceId      (s: string) = SpaceId      (System.Guid.Parse s)
-let private parseEventId      (s: string) = EventId      (System.Guid.Parse s)
-let private parseUserId       (s: string) = UserId       (System.Guid.Parse s)
-
-let private isoStr (dto: System.DateTimeOffset) : string =
-    let d : obj = unbox dto
-    d?toISOString()
-
-let private parseDte (s: string) = System.DateTimeOffset.Parse(s)
-
-let private dateStr (d: System.DateOnly) =
-    sprintf "%04d-%02d-%02d" d.Year d.Month d.Day
-
-let private parseDate (s: string) =
-    let parts = s.Split('-')
-    System.DateOnly(int parts.[0], int parts.[1], int parts.[2])
-
-let private decStr  (d: decimal) = string d
-let private parseDec (s: string) = System.Decimal.Parse(s)
-
-// Avoid opening Fable.Core.JS which shadows F# Array and Map modules.
-let private objKeys (o: obj) : string list =
-    Fable.Core.JS.Constructors.Object.keys(o) |> Seq.toList
-
-// ─── Split encode / decode ────────────────────────────────────────────────────
-
-let private encSplit (split: Split) : obj =
-    let strPairs (pairs: (MemberId * decimal) list) =
-        pairs |> List.map (fun (k, v) -> createObj [ "m" ==> memberIdStr k; "v" ==> decStr v ]) |> Array.ofList |> box
-    let intPairs (pairs: (MemberId * int) list) =
-        pairs |> List.map (fun (k, v) -> createObj [ "m" ==> memberIdStr k; "v" ==> box v ]) |> Array.ofList |> box
-    match split with
-    | Equal members ->
-        createObj [
-            "type"    ==> "Equal"
-            "members" ==> (members |> List.map memberIdStr |> Array.ofList)
-        ]
-    | Exact      shares -> createObj [ "type" ==> "Exact";      "shares" ==> strPairs shares ]
-    | Percentage shares -> createObj [ "type" ==> "Percentage"; "shares" ==> strPairs shares ]
-    | Shares     shares -> createObj [ "type" ==> "Shares";     "shares" ==> intPairs shares ]
-
-let private decSplit (raw: obj) : Split =
-    let strPairs (arr: obj[]) =
-        arr |> Array.toList |> List.map (fun o -> parseMemberId (string o?m), parseDec (string o?v))
-    let intPairs (arr: obj[]) =
-        arr |> Array.toList |> List.map (fun o -> parseMemberId (string o?m), int (string o?v))
-    match string raw?``type`` with
-    | "Equal" ->
-        Equal (raw?members |> unbox<string[]> |> Array.toList |> List.map parseMemberId)
-    | "Exact"      -> Exact      (strPairs (raw?shares |> unbox<obj[]>))
-    | "Percentage" -> Percentage (strPairs (raw?shares |> unbox<obj[]>))
-    | "Shares"     -> Shares     (intPairs (raw?shares |> unbox<obj[]>))
-    | t -> failwith $"Unknown split type: {t}"
-
-// ─── Patch encode / decode ────────────────────────────────────────────────────
-// Unchanged → null  |  Clear → "__CLEAR__"  |  SetTo v → encVal v
-
-let private encodePatch (encVal: 'a -> obj) (patch: 'a Patch) : obj =
-    match patch with
-    | Unchanged -> null
-    | Clear     -> box "__CLEAR__"
-    | SetTo v   -> encVal v
-
-let private decodePatch (decVal: obj -> 'a) (raw: obj) : 'a Patch =
-    if isNull raw then Unchanged
-    elif string raw = "__CLEAR__" then Clear
-    else SetTo (decVal raw)
-
-// ─── Member encode ────────────────────────────────────────────────────────────
-
-let private encMember (m: Member) : obj =
-    createObj [
-        "id"          ==> memberIdStr m.Id
-        "displayName" ==> m.DisplayName
-        "userId"      ==> (m.UserId |> Option.map (fun (UserId g) -> guidStr g) |> Option.toObj)
-    ]
-
-let private decMember (raw: obj) : Member = {
-    Id          = parseMemberId (string raw?id)
-    DisplayName = string raw?displayName
-    UserId      = if isNull raw?userId then None else Some (parseUserId (string raw?userId))
-}
-
-// ─── Payload encode / decode ──────────────────────────────────────────────────
-
-let private encPayload (event: SpaceEvent) : string * obj =
-    match event with
-    | SpaceCreated env ->
-        let p = env.Payload
-        "SpaceCreated", createObj [
-            "name"      ==> p.Name
-            "currency"  ==> p.Currency
-            "createdBy" ==> memberIdStr p.CreatedBy
-            "categories" ==> (p.Categories |> Array.ofList)
-        ]
-    | MemberAdded env ->
-        "MemberAdded", createObj [ "member" ==> encMember env.Payload.Member ]
-    | CategoryAdded env ->
-        "CategoryAdded", createObj [ "name" ==> env.Payload.Name ]
-    | CategoryRenamed env ->
-        let p = env.Payload
-        "CategoryRenamed", createObj [
-            "oldName" ==> p.OldName
-            "newName" ==> p.NewName
-        ]
-    | CategoryArchived env ->
-        "CategoryArchived", createObj [ "name" ==> env.Payload.Name ]
-    | ExpenseAdded env ->
-        let p = env.Payload
-        "ExpenseAdded", createObj [
-            "expenseId"    ==> expenseIdStr p.ExpenseId
-            "description"  ==> p.Description
-            "paidAmount"   ==> decStr p.PaidAmount
-            "paidCurrency" ==> p.PaidCurrency
-            "exchangeRate" ==> (p.ExchangeRate |> Option.map decStr |> Option.toObj)
-            "paidBy"       ==> memberIdStr p.PaidBy
-            "split"        ==> encSplit p.Split
-            "date"         ==> dateStr p.Date
-            "category"     ==> (p.Category  |> Option.toObj)
-            "notes"        ==> (p.Notes     |> Option.toObj)
-        ]
-    | ExpenseCorrected env ->
-        let p = env.Payload
-        "ExpenseCorrected", createObj [
-            "originalExpenseId" ==> expenseIdStr p.OriginalExpenseId
-            "description"       ==> (p.Description  |> Option.toObj)
-            "paidAmount"        ==> (p.PaidAmount    |> Option.map decStr      |> Option.toObj)
-            "paidCurrency"      ==> (p.PaidCurrency  |> Option.toObj)
-            "exchangeRate"      ==> encodePatch (decStr >> box) p.ExchangeRate
-            "paidBy"            ==> (p.PaidBy        |> Option.map memberIdStr |> Option.toObj)
-            "split"             ==> (p.Split         |> Option.map encSplit    |> Option.toObj)
-            "date"              ==> (p.Date          |> Option.map dateStr     |> Option.toObj)
-            "category"          ==> encodePatch box p.Category
-            "notes"             ==> encodePatch box p.Notes
-            "reason"            ==> (p.Reason        |> Option.toObj)
-        ]
-    | ExpenseDeleted env ->
-        let p = env.Payload
-        "ExpenseDeleted", createObj [
-            "expenseId" ==> expenseIdStr p.ExpenseId
-            "reason"    ==> (p.Reason |> Option.toObj)
-        ]
-    | SettlementRecorded env ->
-        let p = env.Payload
-        "SettlementRecorded", createObj [
-            "settlementId" ==> settlementIdStr p.SettlementId
-            "from"         ==> memberIdStr p.From
-            "to"           ==> memberIdStr p.To
-            "amount"       ==> decStr p.Amount
-            "currency"     ==> p.Currency
-            "exchangeRate" ==> (p.ExchangeRate |> Option.map decStr |> Option.toObj)
-            "date"         ==> dateStr p.Date
-            "notes"        ==> (p.Notes |> Option.toObj)
-        ]
-
-// ─── Envelope extraction ──────────────────────────────────────────────────────
-
-let private envFields (id: EventId) (sid: SpaceId) (seq: int64) (aid: MemberId) (oat: System.DateTimeOffset) =
-    eventIdStr id, spaceIdStr sid, float seq, memberIdStr aid, isoStr oat
-
-let private getEnvFields (event: SpaceEvent) =
-    match event with
-    | SpaceCreated       e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | MemberAdded        e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | CategoryAdded      e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | CategoryRenamed    e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | CategoryArchived   e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | ExpenseAdded       e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | ExpenseCorrected   e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | ExpenseDeleted     e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-    | SettlementRecorded e -> envFields e.Id e.SpaceId e.Sequence e.ActorId e.OccurredAt
-
-// ─── Serialise to JS object ───────────────────────────────────────────────────
-
-let private toStored (event: SpaceEvent) (synced: bool) : obj =
-    let (eid, gid, seq, aid, oat) = getEnvFields event
-    let (eventType, payload)      = encPayload event
-    createObj [
-        "id"         ==> eid
-        "spaceId"    ==> gid
-        "sequence"   ==> seq
-        "actorId"    ==> aid
-        "occurredAt" ==> oat
-        "eventType"  ==> eventType
-        "payload"    ==> payload
-        "synced"     ==> synced
-    ]
-
-// ─── Deserialise from JS object ───────────────────────────────────────────────
-
-let private mkEnv<'P> (raw: obj) (payload: 'P) : EventEnvelope<'P> = {
-    Id         = parseEventId  (string raw?id)
-    SpaceId    = parseSpaceId  (string raw?spaceId)
-    Sequence   = int64 (float raw?sequence)
-    ActorId    = parseMemberId (string raw?actorId)
-    OccurredAt = parseDte      (string raw?occurredAt)
-    CreatedAt  = parseDte      (string raw?occurredAt)
-    Payload    = payload
-}
+let private jsonParse     (s: string) : obj    = emitJsExpr s "JSON.parse($0)"
+let private jsonStringify (o: obj)    : string = emitJsExpr o "JSON.stringify($0)"
 
 let private eventSortKey (raw: obj) =
-    let sequence = int64 (float raw?sequence)
+    let sequence   = int64 (float raw?sequence)
     let occurredAt = string raw?occurredAt
-    let eventId = string raw?id
-    if sequence > 0L then
-        0, sequence, "", eventId
-    else
-        1, 0L, occurredAt, eventId
+    let eventId    = string raw?id
+    if sequence > 0L then 0, sequence, "", eventId
+    else               1, 0L, occurredAt, eventId
+
+let private toStored (event: SpaceEvent) (synced: bool) : obj =
+    let stored : obj = Serde.encodeEventJson event |> jsonParse
+    stored?synced <- synced
+    stored
 
 let private fromStored (raw: obj) : SpaceEvent option =
-    let p : obj = raw?payload
-    try
-        match string raw?eventType with
-        | "SpaceCreated" ->
-            SpaceCreated (mkEnv raw {
-                Name       = string p?name
-                Currency   = string p?currency
-                CreatedBy  = parseMemberId (string p?createdBy)
-                Categories =
-                    if isNull p?categories then []
-                    else p?categories |> unbox<string[]> |> Array.toList
-            }) |> Some
-        | "MemberAdded" ->
-            MemberAdded (mkEnv raw { Member = decMember p?``member`` }) |> Some
-        | "CategoryAdded" ->
-            CategoryAdded (mkEnv raw { Name = string p?name }) |> Some
-        | "CategoryRenamed" ->
-            CategoryRenamed (mkEnv raw {
-                OldName = string p?oldName
-                NewName = string p?newName
-            }) |> Some
-        | "CategoryArchived" ->
-            CategoryArchived (mkEnv raw { Name = string p?name }) |> Some
-        | "ExpenseAdded" ->
-            // Migration: old events stored amount/currency; new events store paidAmount/paidCurrency/exchangeRate
-            let isLegacy = isNull p?paidAmount
-            ExpenseAdded (mkEnv raw {
-                ExpenseId    = parseExpenseId (string p?expenseId)
-                Description  = string p?description
-                PaidAmount   = parseDec (string (if isLegacy then p?amount    else p?paidAmount))
-                PaidCurrency = string  (if isLegacy then p?currency  else p?paidCurrency)
-                ExchangeRate = if isNull p?exchangeRate then None else Some (parseDec (string p?exchangeRate))
-                PaidBy       = parseMemberId (string p?paidBy)
-                Split        = decSplit p?split
-                Date         = parseDate (string p?date)
-                Category     = if isNull p?category  then None else Some (string p?category)
-                Notes        = if isNull p?notes     then None else Some (string p?notes)
-            }) |> Some
-        | "ExpenseCorrected" ->
-            ExpenseCorrected (mkEnv raw {
-                OriginalExpenseId = parseExpenseId (string p?originalExpenseId)
-                Description  = if isNull p?description  then None else Some (string p?description)
-                PaidAmount   = if isNull p?paidAmount   then None else Some (parseDec (string p?paidAmount))
-                PaidCurrency = if isNull p?paidCurrency then None else Some (string p?paidCurrency)
-                ExchangeRate = decodePatch (fun o -> parseDec (string o)) p?exchangeRate
-                PaidBy       = if isNull p?paidBy       then None else Some (parseMemberId (string p?paidBy))
-                Split        = if isNull p?split        then None else Some (decSplit p?split)
-                Date         = if isNull p?date         then None else Some (parseDate (string p?date))
-                Category     = decodePatch string p?category
-                Notes        = decodePatch string p?notes
-                Reason       = if isNull p?reason       then None else Some (string p?reason)
-            }) |> Some
-        | "ExpenseDeleted" ->
-            ExpenseDeleted (mkEnv raw {
-                ExpenseId = parseExpenseId (string p?expenseId)
-                Reason    = if isNull p?reason then None else Some (string p?reason)
-            }) |> Some
-        | "SettlementRecorded" ->
-            SettlementRecorded (mkEnv raw {
-                SettlementId = parseSettlementId (string p?settlementId)
-                From         = parseMemberId (string p?``from``)
-                To           = parseMemberId (string p?``to``)
-                Amount       = parseDec (string p?amount)
-                Currency     = string p?currency
-                ExchangeRate = if isNull p?exchangeRate then None else Some (parseDec (string p?exchangeRate))
-                Date         = parseDate (string p?date)
-                Notes        = if isNull p?notes then None else Some (string p?notes)
-            }) |> Some
-        | _ -> None
-    with _ -> None
+    jsonStringify raw
+    |> Serde.decodeEventJson
+    |> Result.toOption
 
 #if DEVMODE
-let private devChannel : obj = Fable.Core.JsInterop.emitJsExpr () "new BroadcastChannel('splittea-dev')"
+let private devChannel : obj = emitJsExpr () "new BroadcastChannel('splittea-dev')"
 #endif
 
 // ─── Public API ───────────────────────────────────────────────────────────────
