@@ -15,6 +15,7 @@
     <Compile Include="Application/DevBootstrap.fs" />
     <Compile Include="Application/Sync.fs" />
     <Compile Include="UI/Types.fs" />
+    <Compile Include="UI/Styles.fs" />
     <Compile Include="UI/Pages/Space.fs" />
     <Compile Include="UI/Pages/ExpenseForm.fs" />
     <Compile Include="UI/Pages/SettlementForm.fs" />

@@ -37,23 +37,23 @@ let private memberName (state: SpaceState) (id: MemberId) =
     |> Option.defaultValue "Unknown"
 
 let private formatAmount (currency: string) (amount: decimal) =
-    sprintf "%s %.2f" currency amount
+    $"%s{currency} %.2f{amount}"
 
 let private formatDate (d: System.DateOnly) =
-    sprintf "%04d-%02d-%02d" d.Year d.Month d.Day
+    $"%04d{d.Year}-%02d{d.Month}-%02d{d.Day}"
 
 let private balanceRow (state: SpaceState) (pos: NetPosition) =
     let name = memberName state pos.MemberId
     let currency = state.Currency
-    let (color, label) =
-        if pos.Amount > 0m      then "text-green-600", sprintf "gets back %s" (formatAmount currency pos.Amount)
-        elif pos.Amount < 0m   then "text-red-600",   sprintf "owes %s"      (formatAmount currency -pos.Amount)
+    let color, label =
+        if pos.Amount > 0m     then "text-green-600", $"gets back %s{formatAmount currency pos.Amount}"
+        elif pos.Amount < 0m   then "text-red-600", $"owes %s{formatAmount currency -pos.Amount}"
         else                        "text-gray-500",  "settled up"
     Html.div [
         prop.className "flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
         prop.children [
             Html.span [ prop.className "font-medium text-gray-800"; prop.text name ]
-            Html.span [ prop.className (sprintf "text-sm %s" color); prop.text label ]
+            Html.span [ prop.className $"text-sm %s{color}"; prop.text label ]
         ]
     ]
 
@@ -106,8 +106,6 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
         |> List.filter (fun c -> not c.IsArchived)
         |> List.sortBy (fun c -> c.Name)
 
-    let inputCls = "flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-
     Html.div [
         prop.className "fixed inset-0 z-50 flex items-end sm:items-center justify-center"
         prop.children [
@@ -134,14 +132,14 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                         prop.className "flex gap-2"
                         prop.children [
                             Html.input [
-                                prop.className inputCls
+                                prop.className Styles.inputFlex
                                 prop.placeholder "Add category"
                                 prop.value model.NewCategory
                                 prop.onChange (UITypes.NewCategorySet >> dispatch)
                                 prop.onKeyDown (fun e -> if e.key = "Enter" then dispatch UITypes.AddCategorySubmit)
                             ]
                             Html.button [
-                                prop.className "bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold px-4 rounded-lg transition-colors"
+                                prop.className Styles.btnInlinePrimary
                                 prop.disabled model.IsAuthLoading
                                 prop.text "Add"
                                 prop.onClick (fun _ -> dispatch UITypes.AddCategorySubmit)
@@ -149,7 +147,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                         ]
                     ]
                     match model.CategoryError with
-                    | Some err -> Html.p [ prop.className "text-sm text-red-600"; prop.text err ]
+                    | Some err -> Html.p [ prop.className Styles.error; prop.text err ]
                     | None -> ()
                     if List.isEmpty categories then
                         Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No categories yet." ]
@@ -164,7 +162,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                         prop.children [
                                             if isEditing then
                                                 Html.input [
-                                                    prop.className inputCls
+                                                    prop.className Styles.inputFlex
                                                     prop.value model.EditCategoryName
                                                     prop.onChange (UITypes.EditCategoryNameSet >> dispatch)
                                                     prop.onKeyDown (fun e ->
@@ -174,7 +172,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                                 Html.span [ prop.className "flex-1 text-sm text-gray-800"; prop.text category.Name ]
                                             Html.button [
                                                 prop.type' "button"
-                                                prop.className "p-1 text-gray-400 hover:text-teal-600 transition-colors"
+                                                prop.className Styles.btnIconSmPrimary
                                                 prop.title (if isEditing then "Save" else "Rename")
                                                 prop.onClick (fun _ ->
                                                     if isEditing then dispatch UITypes.SaveCategoryRename
@@ -184,7 +182,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                             if not isEditing then
                                                 Html.button [
                                                     prop.type' "button"
-                                                    prop.className "p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                                    prop.className Styles.btnIconSmDanger
                                                     prop.title "Archive"
                                                     prop.onClick (fun _ -> dispatch (UITypes.ArchiveCategory category.Name))
                                                     prop.children [ trashIcon ]
@@ -228,7 +226,7 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                             Html.h1 [ prop.className "text-2xl font-bold text-gray-900"; prop.text spaceName ]
                             Html.button [
                                 prop.type' "button"
-                                prop.className "p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                                prop.className Styles.btnIcon
                                 prop.title "Manage categories"
                                 prop.onClick (fun _ -> dispatch UITypes.SettingsToggled)
                                 prop.children [ gearIcon ]
@@ -237,32 +235,32 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                     ]
 
                     Html.div [
-                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                        prop.className (Styles.cx [Styles.card; "p-4"])
                         prop.children [
-                            Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3"; prop.text "Balances" ]
+                            Html.h2 [ prop.className (Styles.cx [Styles.sectionHeading; "mb-3"]); prop.text "Balances" ]
                             Html.div (positions |> List.map (balanceRow state))
                         ]
                     ]
 
                     if not (List.isEmpty settlements) then
                         Html.div [
-                            prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                            prop.className (Styles.cx [Styles.card; "p-4"])
                             prop.children [
-                                Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1"; prop.text "Suggested Settlements" ]
+                                Html.h2 [ prop.className (Styles.cx [Styles.sectionHeading; "mb-1"]); prop.text "Suggested Settlements" ]
                                 Html.p [ prop.className "text-xs text-gray-400 mb-3"; prop.text "Tap a row to pre-fill the settlement form." ]
                                 Html.div (settlements |> List.map (settlementRow state dispatch))
                             ]
                         ]
 
                     Html.div [
-                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4"
+                        prop.className (Styles.cx [Styles.card; "p-4 space-y-4"])
                         prop.children [
                             Html.div [
                                 prop.className "flex items-center justify-between gap-3"
                                 prop.children [
-                                    Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide"; prop.text "Expenses" ]
+                                    Html.h2 [ prop.className Styles.sectionHeading; prop.text "Expenses" ]
                                     Html.select [
-                                        prop.className "border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        prop.className Styles.inputBase
                                         prop.value model.CategoryFilter
                                         prop.onChange (UITypes.CategoryFilterSet >> dispatch)
                                         prop.children (
@@ -281,15 +279,15 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                     ]
 
                     Html.div [
-                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                        prop.className (Styles.cx [Styles.card; "p-4"])
                         prop.children [
                             Html.div [
                                 prop.className "flex items-center justify-between"
                                 prop.children [
-                                    Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide"; prop.text "Analytics" ]
+                                    Html.h2 [ prop.className Styles.sectionHeading; prop.text "Analytics" ]
                                     Html.button [
                                         prop.type' "button"
-                                        prop.className "text-xs text-teal-600 hover:text-teal-800 font-medium transition-colors"
+                                        prop.className Styles.linkPrimary
                                         prop.text (if model.ShowAnalytics then "Hide" else "Show spend by category")
                                         prop.onClick (fun _ -> dispatch UITypes.AnalyticsToggled)
                                     ]
@@ -321,12 +319,12 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                 prop.className "fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-3 z-40"
                 prop.children [
                     Html.button [
-                        prop.className "flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors"
+                        prop.className Styles.btnBarPrimary
                         prop.text "Add Expense"
                         prop.onClick (fun _ -> dispatch UITypes.AddExpenseClick)
                     ]
                     Html.button [
-                        prop.className "flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors"
+                        prop.className Styles.btnBarSecondary
                         prop.text "Record Settlement"
                         prop.onClick (fun _ -> dispatch UITypes.RecordSettlementClick)
                     ]
