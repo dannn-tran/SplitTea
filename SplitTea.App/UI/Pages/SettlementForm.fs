@@ -91,14 +91,14 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm
             Html.div [
                 prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4"
                 prop.children [
-                    field "From (who paid)"
+                    field "From"
                         (Html.select [
                             prop.className inputCls
                             prop.value (string form.FromIndex)
                             prop.onChange (fun (v: string) -> set (fun f -> { f with FromIndex = int v }))
                             prop.children memberOptions
                         ])
-                    field "To (who receives)"
+                    field "To"
                         (Html.select [
                             prop.className inputCls
                             prop.value (string form.ToIndex)

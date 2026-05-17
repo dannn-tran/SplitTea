@@ -93,9 +93,10 @@ type Msg =
     | EditCategoryNameSet  of string
     | SaveCategoryRename
     | ArchiveCategory      of string
-    | CategorySaved        of Result<unit, string>
+    | CategorySaved           of Result<unit, string>
+    | SettlementFromSuggestion of SuggestedSettlement
     | SyncDone
-    | ExchangeRatesLoaded  of Map<string, decimal>
+    | ExchangeRatesLoaded     of Map<string, decimal>
 #if DEVMODE
-    | DevActorSet          of MemberId
+    | DevActorSet             of MemberId
 #endif

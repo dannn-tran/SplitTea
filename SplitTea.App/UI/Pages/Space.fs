@@ -51,13 +51,14 @@ let private balanceRow (state: SpaceState) (pos: NetPosition) =
         ]
     ]
 
-let private settlementRow (state: SpaceState) (s: SuggestedSettlement) =
+let private settlementRow (state: SpaceState) (dispatch: UITypes.Msg -> unit) (s: SuggestedSettlement) =
     let currency = state.Currency
     Html.div [
-        prop.className "flex items-center gap-2 py-2 text-sm text-gray-700 border-b border-gray-100 last:border-0"
+        prop.className "flex items-center gap-2 py-2 text-sm text-gray-700 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 rounded-lg px-1 -mx-1 transition-colors"
+        prop.onClick (fun _ -> dispatch (UITypes.SettlementFromSuggestion s))
         prop.children [
             Html.span [ prop.className "font-medium"; prop.text (memberName state s.From) ]
-            Html.span [ prop.className "text-gray-400"; prop.text "->" ]
+            Html.span [ prop.className "text-gray-400"; prop.text "→" ]
             Html.span [ prop.className "font-medium"; prop.text (memberName state s.To) ]
             Html.span [ prop.className "ml-auto font-semibold text-gray-800"; prop.text (formatAmount currency s.Amount) ]
         ]
@@ -111,150 +112,155 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
         |> List.sortByDescending (fun e -> e.Date, e.Description)
 
     Html.div [
-        prop.className "max-w-lg mx-auto px-4 py-8 space-y-6"
         prop.children [
-            Html.h1 [ prop.className "text-2xl font-bold text-gray-900"; prop.text spaceName ]
-
             Html.div [
-                prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                prop.className "max-w-lg mx-auto px-4 pt-8 pb-28 space-y-6"
                 prop.children [
-                    Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3"; prop.text "Balances" ]
-                    Html.div (positions |> List.map (balanceRow state))
-                ]
-            ]
+                    Html.h1 [ prop.className "text-2xl font-bold text-gray-900"; prop.text spaceName ]
 
-            if not (List.isEmpty settlements) then
-                Html.div [
-                    prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
-                    prop.children [
-                        Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3"; prop.text "Suggested Settlements" ]
-                        Html.div (settlements |> List.map (settlementRow state))
-                    ]
-                ]
-
-            Html.div [
-                prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4"
-                prop.children [
                     Html.div [
-                        prop.className "flex items-center justify-between gap-3"
+                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
                         prop.children [
-                            Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide"; prop.text "Categories" ]
-                            Html.span [ prop.className "text-xs text-gray-400"; prop.text "Space-wide" ]
+                            Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3"; prop.text "Balances" ]
+                            Html.div (positions |> List.map (balanceRow state))
                         ]
                     ]
-                    Html.div [
-                        prop.className "flex gap-2"
-                        prop.children [
-                            Html.input [
-                                prop.className "flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                prop.placeholder "Add category"
-                                prop.value model.NewCategory
-                                prop.onChange (UITypes.NewCategorySet >> dispatch)
-                            ]
-                            Html.button [
-                                prop.className "bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold px-4 rounded-lg transition-colors"
-                                prop.disabled model.IsAuthLoading
-                                prop.text "Add"
-                                prop.onClick (fun _ -> dispatch UITypes.AddCategorySubmit)
-                            ]
-                        ]
-                    ]
-                    match model.CategoryError with
-                    | Some err -> Html.p [ prop.className "text-sm text-red-600"; prop.text err ]
-                    | None -> ()
-                    if List.isEmpty categories then
-                        Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No categories yet." ]
-                    else
+
+                    if not (List.isEmpty settlements) then
                         Html.div [
-                            prop.className "space-y-2"
-                            prop.children (
-                                categories |> List.map (fun category ->
-                                    let isEditing = model.EditingCategory = Some category.Name
-                                    Html.div [
-                                        prop.className "flex items-center gap-2"
-                                        prop.children [
-                                            if isEditing then
-                                                Html.input [
-                                                    prop.className "flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                                    prop.value model.EditCategoryName
-                                                    prop.onChange (UITypes.EditCategoryNameSet >> dispatch)
-                                                ]
-                                            else
-                                                Html.span [ prop.className "flex-1 text-sm text-gray-800"; prop.text category.Name ]
-                                            Html.button [
-                                                prop.type' "button"
-                                                prop.className "p-1 text-gray-400 hover:text-teal-600 transition-colors"
-                                                prop.title (if isEditing then "Save" else "Rename")
-                                                prop.onClick (fun _ ->
-                                                    if isEditing then dispatch UITypes.SaveCategoryRename
-                                                    else dispatch (UITypes.StartCategoryRename category.Name))
-                                                prop.children [ if isEditing then checkIcon else pencilIcon ]
-                                            ]
-                                            if not isEditing then
-                                                Html.button [
-                                                    prop.type' "button"
-                                                    prop.className "p-1 text-gray-400 hover:text-red-500 transition-colors"
-                                                    prop.title "Archive"
-                                                    prop.onClick (fun _ -> dispatch (UITypes.ArchiveCategory category.Name))
-                                                    prop.children [ trashIcon ]
-                                                ]
-                                        ]
-                                    ])
-                            )
-                        ]
-                ]
-            ]
-
-            Html.div [
-                prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4"
-                prop.children [
-                    Html.div [
-                        prop.className "flex items-center justify-between gap-3"
-                        prop.children [
-                            Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide"; prop.text "Expenses" ]
-                            Html.select [
-                                prop.className "border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                prop.value model.CategoryFilter
-                                prop.onChange (UITypes.CategoryFilterSet >> dispatch)
-                                prop.children (
-                                    Html.option [ prop.value ""; prop.text "All categories" ]
-                                    :: (categories |> List.map (fun category ->
-                                        Html.option [ prop.value category.Name; prop.text category.Name ]))
-                                )
+                            prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                            prop.children [
+                                Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1"; prop.text "Suggested Settlements" ]
+                                Html.p [ prop.className "text-xs text-gray-400 mb-3"; prop.text "Tap a row to pre-fill the settlement form." ]
+                                Html.div (settlements |> List.map (settlementRow state dispatch))
                             ]
                         ]
-                    ]
-                    if List.isEmpty expenses then
-                        Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No expenses match this filter." ]
-                    else
-                        Html.div (expenses |> List.map (expenseRow state))
-                ]
-            ]
 
-            Html.div [
-                prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
-                prop.children [
-                    Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3"; prop.text "Spend by Category" ]
-                    if List.isEmpty categorySpending then
-                        Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No categorized spending yet." ]
-                    else
-                        Html.div [
-                            prop.children (
-                                categorySpending |> List.map (fun row ->
-                                    Html.div [
-                                        prop.className "flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
-                                        prop.children [
-                                            Html.span [ prop.className "text-sm text-gray-800"; prop.text row.Category ]
-                                            Html.span [ prop.className "text-sm font-semibold text-gray-900"; prop.text (formatAmount state.Currency row.Total) ]
-                                        ]
-                                    ])
-                            )
+                    Html.div [
+                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4"
+                        prop.children [
+                            Html.div [
+                                prop.className "flex items-center justify-between gap-3"
+                                prop.children [
+                                    Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide"; prop.text "Expenses" ]
+                                    Html.select [
+                                        prop.className "border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        prop.value model.CategoryFilter
+                                        prop.onChange (UITypes.CategoryFilterSet >> dispatch)
+                                        prop.children (
+                                            Html.option [ prop.value ""; prop.text "All categories" ]
+                                            :: (categories |> List.map (fun category ->
+                                                Html.option [ prop.value category.Name; prop.text category.Name ]))
+                                        )
+                                    ]
+                                ]
+                            ]
+                            if List.isEmpty expenses then
+                                Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No expenses match this filter." ]
+                            else
+                                Html.div (expenses |> List.map (expenseRow state))
                         ]
+                    ]
+
+                    Html.div [
+                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4"
+                        prop.children [
+                            Html.div [
+                                prop.className "flex items-center justify-between gap-3"
+                                prop.children [
+                                    Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide"; prop.text "Categories" ]
+                                    Html.span [ prop.className "text-xs text-gray-400"; prop.text "Space-wide" ]
+                                ]
+                            ]
+                            Html.div [
+                                prop.className "flex gap-2"
+                                prop.children [
+                                    Html.input [
+                                        prop.className "flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        prop.placeholder "Add category"
+                                        prop.value model.NewCategory
+                                        prop.onChange (UITypes.NewCategorySet >> dispatch)
+                                    ]
+                                    Html.button [
+                                        prop.className "bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold px-4 rounded-lg transition-colors"
+                                        prop.disabled model.IsAuthLoading
+                                        prop.text "Add"
+                                        prop.onClick (fun _ -> dispatch UITypes.AddCategorySubmit)
+                                    ]
+                                ]
+                            ]
+                            match model.CategoryError with
+                            | Some err -> Html.p [ prop.className "text-sm text-red-600"; prop.text err ]
+                            | None -> ()
+                            if List.isEmpty categories then
+                                Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No categories yet." ]
+                            else
+                                Html.div [
+                                    prop.className "space-y-2"
+                                    prop.children (
+                                        categories |> List.map (fun category ->
+                                            let isEditing = model.EditingCategory = Some category.Name
+                                            Html.div [
+                                                prop.className "flex items-center gap-2"
+                                                prop.children [
+                                                    if isEditing then
+                                                        Html.input [
+                                                            prop.className "flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                            prop.value model.EditCategoryName
+                                                            prop.onChange (UITypes.EditCategoryNameSet >> dispatch)
+                                                        ]
+                                                    else
+                                                        Html.span [ prop.className "flex-1 text-sm text-gray-800"; prop.text category.Name ]
+                                                    Html.button [
+                                                        prop.type' "button"
+                                                        prop.className "p-1 text-gray-400 hover:text-teal-600 transition-colors"
+                                                        prop.title (if isEditing then "Save" else "Rename")
+                                                        prop.onClick (fun _ ->
+                                                            if isEditing then dispatch UITypes.SaveCategoryRename
+                                                            else dispatch (UITypes.StartCategoryRename category.Name))
+                                                        prop.children [ if isEditing then checkIcon else pencilIcon ]
+                                                    ]
+                                                    if not isEditing then
+                                                        Html.button [
+                                                            prop.type' "button"
+                                                            prop.className "p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                                            prop.title "Archive"
+                                                            prop.onClick (fun _ -> dispatch (UITypes.ArchiveCategory category.Name))
+                                                            prop.children [ trashIcon ]
+                                                        ]
+                                                ]
+                                            ])
+                                    )
+                                ]
+                        ]
+                    ]
+
+                    Html.div [
+                        prop.className "bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                        prop.children [
+                            Html.h2 [ prop.className "text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3"; prop.text "Spend by Category" ]
+                            if List.isEmpty categorySpending then
+                                Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No categorized spending yet." ]
+                            else
+                                Html.div [
+                                    prop.children (
+                                        categorySpending |> List.map (fun row ->
+                                            Html.div [
+                                                prop.className "flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
+                                                prop.children [
+                                                    Html.span [ prop.className "text-sm text-gray-800"; prop.text row.Category ]
+                                                    Html.span [ prop.className "text-sm font-semibold text-gray-900"; prop.text (formatAmount state.Currency row.Total) ]
+                                                ]
+                                            ])
+                                    )
+                                ]
+                        ]
+                    ]
                 ]
             ]
 
             Html.div [
-                prop.className "flex gap-3"
+                prop.className "fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 px-4 py-3 flex gap-3 z-40"
                 prop.children [
                     Html.button [
                         prop.className "flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors"

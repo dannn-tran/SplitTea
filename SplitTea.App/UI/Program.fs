@@ -298,6 +298,16 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         let cur = model.SpaceState.Currency
         { model with Page = RecordSettlement; SettlementForm = emptySettlementForm n cur }, Cmd.none
 
+    | SettlementFromSuggestion s ->
+        let members = sortedMembers model.SpaceState
+        let findIdx id = members |> List.tryFindIndex (fun m -> m.Id = id) |> Option.defaultValue 0
+        let cur = model.SpaceState.Currency
+        let form = { emptySettlementForm members.Length cur with
+                        FromIndex  = findIdx s.From
+                        ToIndex    = findIdx s.To
+                        AmountText = sprintf "%.2f" s.Amount }
+        { model with Page = RecordSettlement; SettlementForm = form }, Cmd.none
+
     | ExpenseFormSet form ->
         { model with ExpenseForm = form }, Cmd.none
 
@@ -551,7 +561,7 @@ let private devActorBadge (model: Model) (dispatch: Msg -> unit) =
         |> Map.toList
         |> List.sortBy (fun (_, m) -> m.DisplayName)
     Html.div [
-        prop.className "fixed bottom-4 right-4 z-50 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg flex items-center gap-2"
+        prop.className "fixed bottom-24 right-4 z-50 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg flex items-center gap-2"
         prop.children [
             Html.span [ prop.className "text-gray-400"; prop.text "Acting as" ]
             Html.select [
