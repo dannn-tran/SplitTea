@@ -10,7 +10,7 @@ let private currencyOptions (groupCurrency: string) =
     let all = if List.contains groupCurrency commonCurrencies then commonCurrencies else groupCurrency :: commonCurrencies
     all |> List.map (fun c -> Html.option [ prop.value c; prop.text c ])
 
-let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (dispatch: Msg -> unit) =
+let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (isEditing: bool) (dispatch: Msg -> unit) =
     let members =
         state.Members
         |> Map.toList
@@ -40,7 +40,7 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                         prop.text "←"
                         prop.onClick (fun _ -> dispatch (NavigateTo SpaceOverview))
                     ]
-                    Html.h1 [ prop.className "text-xl font-bold text-gray-900"; prop.text "Add Expense" ]
+                    Html.h1 [ prop.className "text-xl font-bold text-gray-900"; prop.text (if isEditing then "Edit Expense" else "Add Expense") ]
                 ]
             ]
             Html.div [
@@ -181,7 +181,7 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                     Html.button [
                         prop.className Styles.btnPrimary
                         prop.disabled disabled
-                        prop.text (if form.IsSubmitting then "Saving..." else "Save Expense")
+                        prop.text (if form.IsSubmitting then "Saving..." elif isEditing then "Save Changes" else "Save Expense")
                         prop.onClick (fun _ -> dispatch ExpenseSubmit)
                     ]
                 ]

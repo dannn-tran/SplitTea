@@ -80,6 +80,46 @@ let archiveCategory
     CategoryArchived (mkEnvelope spaceId actorId { Name = name.Trim() })
     |> Storage.saveEvent
 
+let correctExpense
+    (spaceId:      SpaceId)
+    (actorId:      MemberId)
+    (expenseId:    ExpenseId)
+    (description:  string)
+    (paidAmount:   Amount)
+    (paidCurrency: CurrencyCode)
+    (exchangeRate: decimal option)
+    (paidBy:       MemberId)
+    (split:        Split)
+    (date:         System.DateOnly)
+    (category:     string option)
+    (notes:        string option)
+    : Async<unit> =
+    ExpenseCorrected (mkEnvelope spaceId actorId {
+        OriginalExpenseId = expenseId
+        Description       = Some description
+        PaidAmount        = Some paidAmount
+        PaidCurrency      = Some paidCurrency
+        ExchangeRate      = match exchangeRate with Some r -> SetTo r | None -> Clear
+        PaidBy            = Some paidBy
+        Split             = Some split
+        Date              = Some date
+        Category          = match category with Some c -> SetTo c | None -> Clear
+        Notes             = match notes with Some n -> SetTo n | None -> Clear
+        Reason            = None
+    })
+    |> Storage.saveEvent
+
+let deleteExpense
+    (spaceId:   SpaceId)
+    (actorId:   MemberId)
+    (expenseId: ExpenseId)
+    : Async<unit> =
+    ExpenseDeleted (mkEnvelope spaceId actorId {
+        ExpenseId = expenseId
+        Reason    = None
+    })
+    |> Storage.saveEvent
+
 let recordSettlement
     (spaceId:     SpaceId)
     (actorId:     MemberId)

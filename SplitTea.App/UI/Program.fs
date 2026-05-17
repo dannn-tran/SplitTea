@@ -113,8 +113,9 @@ let init () : Model * Cmd<Msg> =
         NewCategory    = ""
         EditingCategory = None
         EditCategoryName = ""
-        CategoryError  = None
-        ExchangeRates  = Map.empty
+        CategoryError    = None
+        EditingExpenseId = None
+        ExchangeRates    = Map.empty
         SignInEmail    = ""
         SignInError    = None
         IsAuthLoading  = true
@@ -296,7 +297,45 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | AddExpenseClick ->
         let cur = model.SpaceState.Currency
-        { model with Page = AddExpense; ExpenseForm = emptyExpenseForm cur }, Cmd.none
+        { model with Page = AddExpense; ExpenseForm = emptyExpenseForm cur; EditingExpenseId = None }, Cmd.none
+
+    | EditExpenseClick expenseId ->
+        match Map.tryFind expenseId model.SpaceState.Expenses with
+        | None -> model, Cmd.none
+        | Some expense ->
+            let members = sortedMembers model.SpaceState
+            let paidByIndex = members |> List.tryFindIndex (fun m -> m.Id = expense.PaidBy) |> Option.defaultValue 0
+            let form = {
+                Description      = expense.Description
+                AmountText       = sprintf "%.2f" expense.PaidAmount
+                Currency         = expense.PaidCurrency
+                ExchangeRateText = expense.ExchangeRate |> Option.map string |> Option.defaultValue ""
+                PaidByIndex      = paidByIndex
+                DateText         = sprintf "%04d-%02d-%02d" expense.Date.Year expense.Date.Month expense.Date.Day
+                Category         = expense.Category |> Option.defaultValue ""
+                Notes            = expense.Notes |> Option.defaultValue ""
+                IsSubmitting     = false
+                Error            = None
+                IsAddingCategory = false
+                NewCategoryText  = ""
+            }
+            { model with Page = AddExpense; ExpenseForm = form; EditingExpenseId = Some expenseId }, Cmd.none
+
+    | DeleteExpenseClick expenseId ->
+        match model.ActiveSpaceId with
+        | None -> model, Cmd.none
+        | Some sid ->
+            let confirmed : bool = Fable.Core.JsInterop.emitJsExpr () "window.confirm('Delete this expense?')"
+            if not confirmed then model, Cmd.none
+            else
+                let actorId = resolveActor model
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.deleteExpense sid actorId expenseId)
+                        ()
+                        (fun () -> ExpenseDeleted (Ok ()))
+                        (fun ex -> ExpenseDeleted (Error ex.Message))
+                model, cmd
 
     | RecordSettlementClick ->
         let n   = model.SpaceState.Members.Count
@@ -377,11 +416,19 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                     let category = if form.Category = "" then None else Some form.Category
                     let notes    = if form.Notes.Trim() = "" then None else Some (form.Notes.Trim())
                     let cmd =
-                        Cmd.OfAsync.either
-                            (fun () -> Commands.addExpense sid actorId form.Description amount form.Currency rateOpt' paidById split date category notes)
-                            ()
-                            (fun () -> ExpenseSaved (Ok ()))
-                            (fun ex  -> ExpenseSaved (Error ex.Message))
+                        match model.EditingExpenseId with
+                        | Some expId ->
+                            Cmd.OfAsync.either
+                                (fun () -> Commands.correctExpense sid actorId expId form.Description amount form.Currency rateOpt' paidById split date category notes)
+                                ()
+                                (fun () -> ExpenseCorrected (Ok ()))
+                                (fun ex  -> ExpenseCorrected (Error ex.Message))
+                        | None ->
+                            Cmd.OfAsync.either
+                                (fun () -> Commands.addExpense sid actorId form.Description amount form.Currency rateOpt' paidById split date category notes)
+                                ()
+                                (fun () -> ExpenseSaved (Ok ()))
+                                (fun ex  -> ExpenseSaved (Error ex.Message))
                     { model with ExpenseForm = { form with IsSubmitting = true; Error = None } }, cmd
             | _, None, _ ->
                 { model with ExpenseForm = { form with Error = Some "Invalid amount." } }, Cmd.none
@@ -400,6 +447,30 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | ExpenseSaved (Error err) ->
         { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false; Error = Some err } }, Cmd.none
+
+    | ExpenseCorrected (Ok ()) ->
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false }; EditingExpenseId = None; Toast = Some "Expense updated!" },
+            Cmd.batch [ loadCmd; clearCmd ]
+        | None ->
+            { model with Page = SpaceOverview }, Cmd.none
+
+    | ExpenseCorrected (Error err) ->
+        { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false; Error = Some err } }, Cmd.none
+
+    | ExpenseDeleted (Ok ()) ->
+        match model.ActiveSpaceId with
+        | Some sid ->
+            let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            { model with Toast = Some "Expense deleted!" }, Cmd.batch [ loadCmd; clearCmd ]
+        | None -> model, Cmd.none
+
+    | ExpenseDeleted (Error err) ->
+        { model with Toast = Some $"Delete failed: %s{err}" }, Cmd.none
 
     | SettlementFormSet form ->
         { model with SettlementForm = form }, Cmd.none
@@ -660,7 +731,7 @@ let view (model: Model) (dispatch: Msg -> unit) =
         | DevBootstrap        -> devBootstrapView model dispatch
 #endif
         | SpaceOverview       -> SpacePage.view model.SpaceState model dispatch
-        | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm dispatch
+        | AddExpense          -> ExpenseFormPage.view model.SpaceState model.ExchangeRates model.ExpenseForm model.EditingExpenseId.IsSome dispatch
         | RecordSettlement    -> SettlementFormPage.view model.SpaceState model.ExchangeRates model.SettlementForm dispatch
         | Analytics           -> loadingView ()
 

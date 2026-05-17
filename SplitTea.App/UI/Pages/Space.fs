@@ -70,22 +70,36 @@ let private settlementRow (state: SpaceState) (dispatch: UITypes.Msg -> unit) (s
         ]
     ]
 
-let private expenseRow (state: SpaceState) (expense: ExpenseState) =
+let private expenseRow (state: SpaceState) (dispatch: UITypes.Msg -> unit) (expense: ExpenseState) =
     Html.div [
         prop.className "py-3 border-b border-gray-100 last:border-0 space-y-1"
         prop.children [
             Html.div [
                 prop.className "flex items-center justify-between gap-3"
                 prop.children [
-                    Html.span [ prop.className "font-medium text-gray-800"; prop.text expense.Description ]
-                    Html.span [ prop.className "font-semibold text-gray-900"; prop.text (formatAmount expense.PaidCurrency expense.PaidAmount) ]
+                    Html.span [ prop.className "font-medium text-gray-800 flex-1 min-w-0 truncate"; prop.text expense.Description ]
+                    Html.span [ prop.className "font-semibold text-gray-900 shrink-0"; prop.text (formatAmount expense.PaidCurrency expense.PaidAmount) ]
                 ]
             ]
             Html.div [
-                prop.className "flex items-center justify-between gap-3 text-sm text-gray-500"
+                prop.className "flex items-center gap-3 text-sm text-gray-500"
                 prop.children [
-                    Html.span [ prop.text (memberName state expense.PaidBy) ]
+                    Html.span [ prop.className "flex-1"; prop.text (memberName state expense.PaidBy) ]
                     Html.span [ prop.text (formatDate expense.Date) ]
+                    Html.button [
+                        prop.type' "button"
+                        prop.className Styles.btnIconSmPrimary
+                        prop.title "Edit"
+                        prop.onClick (fun _ -> dispatch (UITypes.EditExpenseClick expense.ExpenseId))
+                        prop.children [ pencilIcon ]
+                    ]
+                    Html.button [
+                        prop.type' "button"
+                        prop.className Styles.btnIconSmDanger
+                        prop.title "Delete"
+                        prop.onClick (fun _ -> dispatch (UITypes.DeleteExpenseClick expense.ExpenseId))
+                        prop.children [ trashIcon ]
+                    ]
                 ]
             ]
             match expense.Category with
@@ -274,7 +288,7 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                             if List.isEmpty expenses then
                                 Html.p [ prop.className "text-sm text-gray-400 italic"; prop.text "No expenses match this filter." ]
                             else
-                                Html.div (expenses |> List.map (expenseRow state))
+                                Html.div (expenses |> List.map (expenseRow state dispatch))
                         ]
                     ]
 

@@ -54,6 +54,7 @@ type Model = {
     EditingCategory  : string option
     EditCategoryName : string
     CategoryError    : string option
+    EditingExpenseId : ExpenseId option
     ExchangeRates    : Map<string, decimal>
     SignInEmail      : string
     SignInError      : string option
@@ -82,10 +83,14 @@ type Msg =
     | SpaceNotFound
     | NavigateTo        of Page
     | AddExpenseClick
+    | EditExpenseClick    of ExpenseId
+    | DeleteExpenseClick  of ExpenseId
     | RecordSettlementClick
     | ExpenseFormSet    of ExpenseForm
     | ExpenseSubmit
     | ExpenseSaved      of Result<unit, string>
+    | ExpenseCorrected  of Result<unit, string>
+    | ExpenseDeleted    of Result<unit, string>
     | SettlementFormSet    of SettlementForm
     | SettlementSubmit
     | SettlementSaved      of Result<unit, string>
