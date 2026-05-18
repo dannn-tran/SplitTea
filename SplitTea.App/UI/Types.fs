@@ -64,6 +64,7 @@ type Model = {
     Page                 : Page
     ActiveSpaceId        : SpaceId option
     SpaceState           : SpaceState
+    Conflicts            : Storage.ConflictedEvent list
     CategoryFilter       : string
     NewCategory          : string
     EditingCategory      : string option
@@ -118,6 +119,10 @@ type Msg =
     | SettlementSaved      of Result<unit, string>
     | SpaceStateUpdated    of SpaceState
     | RemoteEventReceived  of SpaceId
+    | SpaceRebased         of SpaceState * Storage.ConflictedEvent list
+    | SyncOutcome          of SpaceId * Sync.PushOutcome list
+    | FlushPending
+    | DismissConflict      of EventId
     | CategoryFilterSet    of string
     | NewCategorySet       of string
     | AddCategorySubmit

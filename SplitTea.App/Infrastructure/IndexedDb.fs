@@ -60,3 +60,26 @@ let markSynced (id: string) : Async<unit> =
             let! _ = (db'?put("events", existing) : JS.Promise<unit>) |> Async.AwaitPromise
             ()
     }
+
+let markConflicted (id: string) : Async<unit> =
+    async {
+        let! db' = db |> Async.AwaitPromise
+        let! existing = (db'?get("events", id) : JS.Promise<obj>) |> Async.AwaitPromise
+        if not (isNull existing) then
+            existing?synced <- "conflicted"
+            let! _ = (db'?put("events", existing) : JS.Promise<unit>) |> Async.AwaitPromise
+            ()
+    }
+
+let getConflictedEvents () : Async<obj[]> =
+    async {
+        let! db' = db |> Async.AwaitPromise
+        return! (db'?getAllFromIndex("events", "synced", "conflicted") : JS.Promise<obj[]>) |> Async.AwaitPromise
+    }
+
+let deleteEvent (id: string) : Async<unit> =
+    async {
+        let! db' = db |> Async.AwaitPromise
+        let! _ = (db'?delete("events", id) : JS.Promise<unit>) |> Async.AwaitPromise
+        ()
+    }

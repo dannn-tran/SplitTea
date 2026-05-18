@@ -9,6 +9,7 @@
     <Compile Include="ReducerTests.fs" />
     <Compile Include="ProjectionTests.fs" />
     <Compile Include="ValidationTests.fs" />
+    <Compile Include="RebaseTests.fs" />
     <Compile Include="SerdeTests.fs" />
   </ItemGroup>
   <ItemGroup>

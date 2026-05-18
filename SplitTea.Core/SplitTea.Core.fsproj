@@ -9,6 +9,7 @@
     <Compile Include="Reducer.fs" />
     <Compile Include="Projections.fs" />
     <Compile Include="Validation.fs" />
+    <Compile Include="Rebase.fs" />
     <Compile Include="Serde.fs" />
   </ItemGroup>
   <ItemGroup>

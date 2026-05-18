@@ -3,21 +3,37 @@ module Sync
 open Fable.Core.JsInterop
 open SplitTea.Core
 
-// Push all locally-saved unsynced events to the Lambda write-proxy, marking each synced on success.
-// Failures are silently skipped — the event stays pending and will retry next time.
-let pushPending (authToken: string) : Async<unit> =
+type PushOutcome =
+    | Pushed
+    | TokenExpired       // 401 — caller should refresh and retry
+    | PermanentRejection // 400/403/422 — event is invalid; rebase needed
+    | TransientFailure   // 5xx / network — retry next cycle
+
+// Push all locally-saved unsynced events to the Lambda write-proxy.
+// Returns per-event outcomes so the caller can trigger rebase on permanent rejections.
+let pushPending (authToken: string) : Async<PushOutcome list> =
     async {
 #if DEVMODE
         if DevMode.isEnabled () then
-            ()
+            return []
         else
 #endif
-            let! pending = IndexedDb.getPendingEvents ()
-            for raw in pending do
-                let! result = SupabaseSync.pushEvent raw authToken
-                match result with
-                | Ok ()    -> do! IndexedDb.markSynced (string raw?id)
-                | Error _  -> ()
+        let! pending = IndexedDb.getPendingEvents ()
+        let outcomes = ResizeArray()
+        for raw in pending do
+            let! result = SupabaseSync.pushEvent raw authToken
+            match result with
+            | Ok () ->
+                do! IndexedDb.markSynced (string raw?id)
+                outcomes.Add Pushed
+            | Error (401, _) ->
+                outcomes.Add TokenExpired
+            | Error (status, _) when status >= 400 && status < 500 ->
+                do! IndexedDb.markConflicted (string raw?id)
+                outcomes.Add PermanentRejection
+            | Error _ ->
+                outcomes.Add TransientFailure
+        return outcomes |> Seq.toList
     }
 
 // Subscribe to Supabase Realtime for a space.

@@ -74,40 +74,44 @@ module Validation =
             | MemberAdded _ -> []
             | ExpenseAdded e ->
                 let p = e.Payload
-                checkAmount p.PaidAmount
+                checkActor state.Members e.ActorId
+                @ checkAmount p.PaidAmount
                 @ checkMember state.Members p.PaidBy
                 @ checkSplit p.Split state.Members p.PaidAmount
                 @ checkCategory state.Categories p.Category
             | ExpenseCorrected e ->
                 let p = e.Payload
-                match Map.tryFind p.OriginalExpenseId state.Expenses with
-                | None -> [ UnknownExpense p.OriginalExpenseId ]
-                | Some ex when ex.IsDeleted -> [ DeletedExpense p.OriginalExpenseId ]
-                | Some ex ->
-                    let effectiveAmount = p.PaidAmount |> Option.defaultValue ex.PaidAmount
-                    let effectiveSplit  = p.Split      |> Option.defaultValue ex.Split
-                    let amountErrs  = p.PaidAmount |> Option.map checkAmount                 |> Option.defaultValue []
-                    let paidByErrs  = p.PaidBy     |> Option.map (checkMember state.Members) |> Option.defaultValue []
-                    let effectiveCategory =
-                        match p.Category with
-                        | Unchanged -> ex.Category
-                        | Clear     -> None
-                        | SetTo v   -> Some v
-                    let categoryErrs = checkCategory state.Categories effectiveCategory
-                    let splitErrs =
-                        match p.Split, p.PaidAmount with
-                        | None, None -> []
-                        | _          -> checkSplit effectiveSplit state.Members effectiveAmount
-                    amountErrs @ paidByErrs @ splitErrs @ categoryErrs
+                checkActor state.Members e.ActorId
+                @ match Map.tryFind p.OriginalExpenseId state.Expenses with
+                  | None -> [ UnknownExpense p.OriginalExpenseId ]
+                  | Some ex when ex.IsDeleted -> [ DeletedExpense p.OriginalExpenseId ]
+                  | Some ex ->
+                      let effectiveAmount = p.PaidAmount |> Option.defaultValue ex.PaidAmount
+                      let effectiveSplit  = p.Split      |> Option.defaultValue ex.Split
+                      let amountErrs  = p.PaidAmount |> Option.map checkAmount                 |> Option.defaultValue []
+                      let paidByErrs  = p.PaidBy     |> Option.map (checkMember state.Members) |> Option.defaultValue []
+                      let effectiveCategory =
+                          match p.Category with
+                          | Unchanged -> ex.Category
+                          | Clear     -> None
+                          | SetTo v   -> Some v
+                      let categoryErrs = checkCategory state.Categories effectiveCategory
+                      let splitErrs =
+                          match p.Split, p.PaidAmount with
+                          | None, None -> []
+                          | _          -> checkSplit effectiveSplit state.Members effectiveAmount
+                      amountErrs @ paidByErrs @ splitErrs @ categoryErrs
             | ExpenseDeleted e ->
                 let p = e.Payload
-                match Map.tryFind p.ExpenseId state.Expenses with
-                | None -> [ UnknownExpense p.ExpenseId ]
-                | Some ex when ex.IsDeleted -> [ DeletedExpense p.ExpenseId ]
-                | Some _ -> []
+                checkActor state.Members e.ActorId
+                @ match Map.tryFind p.ExpenseId state.Expenses with
+                  | None -> [ UnknownExpense p.ExpenseId ]
+                  | Some ex when ex.IsDeleted -> [ DeletedExpense p.ExpenseId ]
+                  | Some _ -> []
             | SettlementRecorded e ->
                 let p = e.Payload
-                checkMember state.Members p.From
+                checkActor state.Members e.ActorId
+                @ checkMember state.Members p.From
                 @ checkMember state.Members p.To
                 @ (if p.From = p.To then [ SelfSettlement ] else [])
                 @ checkAmount p.Amount

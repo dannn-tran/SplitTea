@@ -132,5 +132,7 @@ module Reducer =
         | SettlementRecorded e ->
             { state with Settlements = state.Settlements @ [ e.Payload ] }
 
+    let applyEvent = reduce
+
     let replayEvents (events: SpaceEvent list) : SpaceState =
         List.fold reduce SpaceState.Empty events

@@ -40,6 +40,12 @@ module ``validateEvent ExpenseAdded`` =
         assertOk (validate basePayload)
 
     [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        Validation.validateEvent (makeBaseState ())
+            (ExpenseAdded (envelope unknownMemberId 5 basePayload))
+        |> assertError (ActorNotMember unknownMemberId)
+
+    [<Fact>]
     let ``AmountMustBePositive for zero amount`` () =
         assertError AmountMustBePositive (validate { basePayload with PaidAmount = 0m })
 
@@ -111,6 +117,12 @@ module ``validateEvent ExpenseCorrected`` =
         assertOk (validate { baseCorrection with Description = Some "Renamed" })
 
     [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        Validation.validateEvent (stateWithExpense1 ())
+            (ExpenseCorrected (envelope unknownMemberId 10 { baseCorrection with Description = Some "X" }))
+        |> assertError (ActorNotMember unknownMemberId)
+
+    [<Fact>]
     let ``UnknownExpense for nonexistent OriginalExpenseId`` () =
         assertError (UnknownExpense unknownExpenseId)
             (validate { baseCorrection with OriginalExpenseId = unknownExpenseId })
@@ -156,6 +168,12 @@ module ``validateEvent ExpenseDeleted`` =
         assertOk (validate { ExpenseId = expense1Id; Reason = None })
 
     [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        Validation.validateEvent (stateWithExpense1 ())
+            (ExpenseDeleted (envelope unknownMemberId 10 { ExpenseId = expense1Id; Reason = None }))
+        |> assertError (ActorNotMember unknownMemberId)
+
+    [<Fact>]
     let ``UnknownExpense for nonexistent ExpenseId`` () =
         assertError (UnknownExpense unknownExpenseId)
             (validate { ExpenseId = unknownExpenseId; Reason = None })
@@ -185,6 +203,12 @@ module ``validateEvent SettlementRecorded`` =
     [<Fact>]
     let ``returns Ok for valid settlement`` () =
         assertOk (validate basePayload)
+
+    [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        Validation.validateEvent (makeBaseState ())
+            (SettlementRecorded (envelope unknownMemberId 10 basePayload))
+        |> assertError (ActorNotMember unknownMemberId)
 
     [<Fact>]
     let ``SelfSettlement when From equals To`` () =

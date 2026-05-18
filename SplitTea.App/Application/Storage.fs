@@ -72,15 +72,91 @@ let getPendingEvents () : Async<(SpaceId * SpaceEvent) list> =
 let markSynced (eventId: EventId) : Async<unit> =
     IndexedDb.markSynced (eventIdStr eventId)
 
+// ─── Rebase ───────────────────────────────────────────────────────────────────
+
+type ConflictedEvent = {
+    EventId     : EventId
+    Description : string
+    Reason      : string
+}
+
+let private eventId = function
+    | SpaceCreated e       -> e.Id
+    | SpaceRenamed e       -> e.Id
+    | MemberAdded e        -> e.Id
+    | MemberRenamed e      -> e.Id
+    | CategoryAdded e      -> e.Id
+    | CategoryRenamed e    -> e.Id
+    | CategoryArchived e   -> e.Id
+    | ExpenseAdded e       -> e.Id
+    | ExpenseCorrected e   -> e.Id
+    | ExpenseDeleted e     -> e.Id
+    | SettlementRecorded e -> e.Id
+
+let private describeEvent = function
+    | SpaceCreated _       -> "Create space"
+    | SpaceRenamed _       -> "Rename space"
+    | MemberAdded _        -> "Add member"
+    | MemberRenamed _      -> "Rename member"
+    | CategoryAdded _      -> "Add category"
+    | CategoryRenamed _    -> "Rename category"
+    | CategoryArchived _   -> "Archive category"
+    | ExpenseAdded _       -> "Add expense"
+    | ExpenseCorrected _   -> "Edit expense"
+    | ExpenseDeleted _     -> "Delete expense"
+    | SettlementRecorded _ -> "Record settlement"
+
+let private describeError = function
+    | UnknownMember _         -> "Member no longer exists"
+    | UnknownExpense _        -> "Expense no longer exists"
+    | UnknownCategory _       -> "Category no longer exists"
+    | ArchivedCategory _      -> "Category has been archived"
+    | DeletedExpense _        -> "Expense has already been deleted"
+    | AmountMustBePositive    -> "Amount must be positive"
+    | SplitMustHaveMembers    -> "Split must include at least one member"
+    | ExactSplitSumMismatch _ -> "Split amounts do not add up to expense total"
+    | PercentageSumMismatch _ -> "Percentages do not add up to 100%"
+    | SharesMustBePositive    -> "All shares must be positive"
+    | SelfSettlement          -> "Cannot settle with yourself"
+    | CurrencyMismatch _      -> "Currency mismatch"
+    | ActorNotMember _        -> "You are no longer a member of this space"
+    | CannotRenameOtherMember -> "You can only rename yourself"
+
+// Computes display state by rebasing pending local events on top of server state.
+// Events that fail validation are marked conflicted in IndexedDB and returned as ConflictedEvent list.
+let rebaseAndDisplay (spaceId: SpaceId) : Async<SpaceState * ConflictedEvent list> =
+    async {
+        let! raws = IndexedDb.getEventsBySpace (spaceIdStr spaceId)
+        let synced  = raws |> Array.filter (fun r -> string r?synced = "true")
+                           |> Array.sortBy eventSortKey
+                           |> Array.choose fromStored
+                           |> Array.toList
+        let pending = raws |> Array.filter (fun r -> r?synced = box false)
+                           |> Array.sortBy eventSortKey
+                           |> Array.choose fromStored
+                           |> Array.toList
+        let (displayState, rebaseConflicts) = Rebase.apply synced pending
+        let conflicts = ResizeArray()
+        for rc in rebaseConflicts do
+            let id = eventId rc.Event
+            do! IndexedDb.markConflicted (eventIdStr id)
+            conflicts.Add {
+                EventId     = id
+                Description = describeEvent rc.Event
+                Reason      = rc.Errors |> List.map describeError |> String.concat "; "
+            }
+        return displayState, conflicts |> Seq.toList
+    }
+
 // ─── Known-space registry (localStorage) ─────────────────────────────────────
 
 type SpaceSummary = { Id: SpaceId; Name: string }
 
-let private localStorage : obj = emitJsExpr () "localStorage"
 let private knownSpacesKey = "knownSpaces"
 
 let private loadKnownSpaces () : SpaceSummary list =
-    let raw : obj = localStorage?getItem(knownSpacesKey)
+    let ls : obj = emitJsExpr () "window.localStorage"
+    let raw : obj = ls?getItem(knownSpacesKey)
     if isNull raw then []
     else
         try
@@ -99,7 +175,8 @@ let private saveKnownSpaces (summaries: SpaceSummary list) : unit =
             createObj [ "id" ==> string g; "name" ==> s.Name ])
         |> List.toArray
         |> box
-    localStorage?setItem(knownSpacesKey, jsonStringify arr) |> ignore
+    let ls : obj = emitJsExpr () "window.localStorage"
+    ls?setItem(knownSpacesKey, jsonStringify arr) |> ignore
 
 let getKnownSpaces () : SpaceSummary list = loadKnownSpaces ()
 
@@ -119,6 +196,6 @@ let deleteSpace (spaceId: SpaceId) : Async<unit> =
     async {
         do! IndexedDb.deleteEventsBySpace (spaceIdStr spaceId)
         removeKnownSpace spaceId
-        // Revoke server-side access. Fire-and-forget: local data is already gone.
-        do! SupabaseSync.removeSpaceAccess (spaceIdStr spaceId)
+        // Revoke server-side access. Best-effort: local data is already gone.
+        try do! SupabaseSync.removeSpaceAccess (spaceIdStr spaceId) with _ -> ()
     }

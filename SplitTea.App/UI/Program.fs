@@ -149,6 +149,7 @@ let init () : Model * Cmd<Msg> =
         ProfileNameText      = ""
         ProfileNameError     = None
         ShowSpaceSwitcher    = false
+        Conflicts            = []
         KnownSpaces          = Storage.getKnownSpaces ()
         CreateSpaceForm      = emptyCreateSpaceForm
 #if DEVMODE
@@ -239,15 +240,16 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         setActiveSpaceId sid
         Storage.upsertKnownSpace sid ss.Name
         let authToken = model.Auth |> Option.map (fun u -> u.AccessToken) |> Option.defaultValue ""
-        let syncCmd = Cmd.OfAsync.attempt (fun () -> Sync.pushPending authToken) () (fun _ -> SyncDone)
-        let fxCmd   =
+        let syncCmd   = Cmd.OfAsync.perform (fun () -> Sync.pushPending authToken) () (fun outcomes -> SyncOutcome (sid, outcomes))
+        let rebaseCmd = Cmd.OfAsync.perform Storage.rebaseAndDisplay sid SpaceRebased
+        let fxCmd     =
             Cmd.OfAsync.either
                 (fun () -> FxRates.getRates ss.Currency)
                 ()
                 ExchangeRatesLoaded
                 (fun _ -> ExchangeRatesLoaded Map.empty)
         { model with ActiveSpaceId = Some sid; SpaceState = ss; Page = SpaceOverview
-                     KnownSpaces = Storage.getKnownSpaces () }, Cmd.batch [ syncCmd; fxCmd ]
+                     KnownSpaces = Storage.getKnownSpaces () }, Cmd.batch [ syncCmd; rebaseCmd; fxCmd ]
 
     | ExchangeRatesLoaded rates ->
         { model with ExchangeRates = rates }, Cmd.none
@@ -426,7 +428,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | CategoryFromFormSaved (Ok name) ->
         match model.ActiveSpaceId with
         | Some sid ->
-            let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceStateUpdated ss)
+            let cmd = Cmd.OfAsync.perform Storage.rebaseAndDisplay sid SpaceRebased
             { model with IsAuthLoading = false; ExpenseForm = { model.ExpenseForm with Category = name } }, cmd
         | None ->
             { model with IsAuthLoading = false }, Cmd.none
@@ -624,8 +626,39 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with SpaceState = ss }, Cmd.none
 
     | RemoteEventReceived sid ->
-        let cmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceStateUpdated ss)
+        match model.ActiveSpaceId with
+        | Some active when active = sid ->
+            let cmd = Cmd.OfAsync.perform Storage.rebaseAndDisplay sid SpaceRebased
+            model, cmd
+        | _ -> model, Cmd.none
+
+    | SpaceRebased (state, newConflicts) ->
+        let allConflicts = model.Conflicts @ newConflicts
+        let toast =
+            if newConflicts.IsEmpty then model.Toast
+            else
+                let summary = newConflicts |> List.map (fun c -> sprintf "%s: %s" c.Description c.Reason) |> String.concat "\n"
+                Some (sprintf "Some changes could not be applied:\n%s" summary)
+        { model with SpaceState = state; Conflicts = allConflicts; Toast = toast }, Cmd.none
+
+    | SyncOutcome (sid, outcomes) ->
+        let needsRebase = outcomes |> List.exists (fun o -> o = Sync.PermanentRejection)
+        let cmd =
+            if needsRebase then Cmd.OfAsync.perform Storage.rebaseAndDisplay sid SpaceRebased
+            else Cmd.none
         model, cmd
+
+    | FlushPending ->
+        match model.ActiveSpaceId, model.Auth with
+        | Some sid, Some user ->
+            let cmd = Cmd.OfAsync.perform (fun () -> Sync.pushPending user.AccessToken) () (fun outcomes -> SyncOutcome (sid, outcomes))
+            model, cmd
+        | _ -> model, Cmd.none
+
+    | DismissConflict eventId ->
+        let (EventId g) = eventId
+        let cmd = Cmd.OfAsync.attempt (fun () -> IndexedDb.deleteEvent (string g)) () (fun _ -> SyncDone)
+        { model with Conflicts = model.Conflicts |> List.filter (fun c -> c.EventId <> eventId) }, cmd
 
     | SyncDone ->
         model, Cmd.none
@@ -816,7 +849,13 @@ let subscribe (model: Model) : Sub<Msg> =
         let unsub = Auth.subscribe (AuthReceived >> dispatch)
         { new System.IDisposable with member _.Dispose() = unsub () }
 
-    let baseSubs = [ ["auth"], authSub ]
+    let onlineSub (dispatch: Msg -> unit) =
+        let handler : obj = System.Func<obj, unit>(fun _ -> dispatch FlushPending) |> box
+        emitJsExpr (handler) "window.addEventListener('online', $0)" |> ignore
+        { new System.IDisposable with
+            member _.Dispose() = emitJsExpr (handler) "window.removeEventListener('online', $0)" |> ignore }
+
+    let baseSubs = [ ["auth"], authSub; ["online"], onlineSub ]
 
     match model.ActiveSpaceId with
     | None -> baseSubs
