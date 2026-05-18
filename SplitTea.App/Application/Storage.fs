@@ -121,6 +121,7 @@ let private describeError = function
     | CurrencyMismatch _      -> "Currency mismatch"
     | ActorNotMember _        -> "You are no longer a member of this space"
     | CannotRenameOtherMember -> "You can only rename yourself"
+    | DuplicateMember _       -> "A member with this ID already exists"
 
 // Computes display state by rebasing pending local events on top of server state.
 // Events that fail validation are marked conflicted in IndexedDB and returned as ConflictedEvent list.
@@ -197,5 +198,8 @@ let deleteSpace (spaceId: SpaceId) : Async<unit> =
         do! IndexedDb.deleteEventsBySpace (spaceIdStr spaceId)
         removeKnownSpace spaceId
         // Revoke server-side access. Best-effort: local data is already gone.
-        try do! SupabaseSync.removeSpaceAccess (spaceIdStr spaceId) with _ -> ()
+        try
+            do! SupabaseSync.removeSpaceAccess (spaceIdStr spaceId)
+        with ex ->
+            Fable.Core.JS.console.error ("[SplitTea] deleteSpace: server access revocation failed", ex.Message)
     }

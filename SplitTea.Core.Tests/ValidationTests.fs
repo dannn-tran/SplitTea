@@ -19,10 +19,17 @@ let private assertError (expected: ValidationError) result =
 let ``SpaceCreated returns Ok`` () =
     assertOk (Validation.validateEvent SpaceState.Empty spaceCreated)
 
-[<Fact>]
-let ``MemberAdded returns Ok`` () =
-    let state = Reducer.reduce SpaceState.Empty spaceCreated
-    assertOk (Validation.validateEvent state aliceAdded)
+module ``validateEvent MemberAdded`` =
+    let private baseState () = Reducer.reduce SpaceState.Empty spaceCreated
+
+    [<Fact>]
+    let ``returns Ok for a new member`` () =
+        assertOk (Validation.validateEvent (baseState ()) aliceAdded)
+
+    [<Fact>]
+    let ``DuplicateMember when member ID already exists`` () =
+        let state = Reducer.reduce (baseState ()) aliceAdded
+        assertError (DuplicateMember aliceId) (Validation.validateEvent state aliceAdded)
 
 module ``validateEvent ExpenseAdded`` =
     let private basePayload : ExpenseAddedPayload = {

@@ -118,12 +118,6 @@ let private emptySettlementForm (memberCount: int) (groupCurrency: string) : Set
 
 let init () : Model * Cmd<Msg> =
     let activeSpaceId = getActiveSpaceId ()
-    // Seed known-spaces list if active space not yet tracked
-    match activeSpaceId with
-    | Some sid ->
-        if not (Storage.getKnownSpaces () |> List.exists (fun s -> s.Id = sid)) then
-            Storage.upsertKnownSpace sid ""
-    | None -> ()
     let model = {
         Auth           = None
         Page           = Loading
@@ -158,8 +152,14 @@ let init () : Model * Cmd<Msg> =
     }
     let cmd =
         match activeSpaceId with
-        | Some sid -> Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-        | None     -> Cmd.none
+        | Some sid ->
+            let seedCmd =
+                if not (Storage.getKnownSpaces () |> List.exists (fun s -> s.Id = sid)) then
+                    Cmd.OfFunc.attempt (fun () -> Storage.upsertKnownSpace sid "") () (fun _ -> SyncDone)
+                else Cmd.none
+            let loadCmd = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
+            Cmd.batch [ seedCmd; loadCmd ]
+        | None -> Cmd.none
     model, cmd
 
 let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
@@ -518,7 +518,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         match model.ActiveSpaceId with
         | Some sid ->
             let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep Styles.toastDurationMs) () (fun () -> ToastCleared)
             { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false }; Toast = Some "Expense saved!" },
             Cmd.batch [ loadCmd; clearCmd ]
         | None ->
@@ -531,7 +531,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         match model.ActiveSpaceId with
         | Some sid ->
             let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep Styles.toastDurationMs) () (fun () -> ToastCleared)
             { model with ExpenseForm = { model.ExpenseForm with IsSubmitting = false }; EditingExpenseId = None; Toast = Some "Expense updated!" },
             Cmd.batch [ loadCmd; clearCmd ]
         | None ->
@@ -544,7 +544,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         match model.ActiveSpaceId with
         | Some sid ->
             let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep Styles.toastDurationMs) () (fun () -> ToastCleared)
             { model with Toast = Some "Expense deleted!" }, Cmd.batch [ loadCmd; clearCmd ]
         | None -> model, Cmd.none
 
@@ -613,7 +613,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         match model.ActiveSpaceId with
         | Some sid ->
             let loadCmd  = Cmd.OfAsync.perform Storage.loadSpaceState sid (fun ss -> SpaceLoaded (sid, ss))
-            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep 3000) () (fun () -> ToastCleared)
+            let clearCmd = Cmd.OfAsync.perform (fun () -> Async.Sleep Styles.toastDurationMs) () (fun () -> ToastCleared)
             { model with SettlementForm = { model.SettlementForm with IsSubmitting = false }; Toast = Some "Settlement recorded!" },
             Cmd.batch [ loadCmd; clearCmd ]
         | None ->

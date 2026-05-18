@@ -27,7 +27,6 @@ let loadSpaceState (connString: string) (spaceId: SpaceId) : Async<SpaceState> =
                     .Replace("\"space_id\"",    "\"spaceId\"")
                     .Replace("\"actor_id\"",    "\"actorId\"")
                     .Replace("\"occurred_at\"", "\"occurredAt\"")
-                    .Replace("\"created_at\"",  "\"createdAt\"")
                     .Replace("\"event_type\"",  "\"eventType\"")
             match Serde.decodeEventJson mapped with
             | Ok ev  -> eventList.Add(ev)

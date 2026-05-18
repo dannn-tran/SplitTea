@@ -15,9 +15,11 @@ module Rebase =
     // tracking.
     let apply (syncedEvents: SpaceEvent list) (pendingEvents: SpaceEvent list) : SpaceState * RebaseConflict list =
         let serverState = Reducer.replayEvents syncedEvents
-        ((serverState, []), pendingEvents)
-        ||> List.fold (fun (accumulated, conflicts) event ->
-            match Validation.validateEvent accumulated event with
-            | Ok _      -> Reducer.applyEvent accumulated event, conflicts
-            | Error errs -> accumulated, conflicts @ [{ Event = event; Errors = errs }]
-        )
+        let (finalState, reversedConflicts) =
+            ((serverState, []), pendingEvents)
+            ||> List.fold (fun (accumulated, conflicts) event ->
+                match Validation.validateEvent accumulated event with
+                | Ok _       -> Reducer.applyEvent accumulated event, conflicts
+                | Error errs -> accumulated, { Event = event; Errors = errs } :: conflicts
+            )
+        finalState, List.rev reversedConflicts

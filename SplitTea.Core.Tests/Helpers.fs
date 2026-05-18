@@ -26,7 +26,6 @@ let envelope actorId seq payload : EventEnvelope<_> = {
     Sequence   = int64 seq
     ActorId    = actorId
     OccurredAt = System.DateTimeOffset.UnixEpoch
-    CreatedAt  = System.DateTimeOffset.UnixEpoch
     Payload    = payload
 }
 

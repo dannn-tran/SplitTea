@@ -11,7 +11,6 @@ let private mkEnvelope (spaceId: SpaceId) (actorId: MemberId) (payload: 'P) : Ev
         Sequence   = 0L
         ActorId    = actorId
         OccurredAt = ts
-        CreatedAt  = ts
         Payload    = payload
     }
 

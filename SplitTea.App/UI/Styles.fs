@@ -2,6 +2,9 @@ module Styles
 
 open Feliz
 
+[<Literal>]
+let toastDurationMs = 3000
+
 // Combine class strings, filtering blanks so conditional classes can safely be ""
 let cx (classes: string list) =
     classes |> List.filter (fun s -> s.Trim() <> "") |> String.concat " "

@@ -302,7 +302,6 @@ let inline private decEnvFields payloadDec eventCtor =
             Sequence   = seq
             ActorId    = actorId
             OccurredAt = occurredAt
-            CreatedAt  = occurredAt
             Payload    = payload
         })
 

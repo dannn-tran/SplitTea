@@ -41,7 +41,9 @@ let private tryReadCache (baseCurrency: string) : Map<string, decimal> option =
                     |> List.map (fun k -> k, decimal (float ratesObj?(k)))
                     |> Map.ofList
                     |> Some
-    with _ -> None
+    with ex ->
+        Fable.Core.JS.console.error ("[SplitTea] FxRates: cache read failed", ex.Message)
+        None
 
 let private writeCache (baseCurrency: string) (rates: Map<string, decimal>) =
     try
@@ -56,7 +58,8 @@ let private writeCache (baseCurrency: string) (rates: Map<string, decimal>) =
             "fetchedAt" ==> emitJsExpr () "Date.now()"
         ]
         browserStorage?setItem(cacheKey, JS.JSON.stringify payload) |> ignore
-    with _ -> ()
+    with ex ->
+        Fable.Core.JS.console.error ("[SplitTea] FxRates: cache write failed", ex.Message)
 
 // ─── Fetch from edge function ─────────────────────────────────────────────────
 

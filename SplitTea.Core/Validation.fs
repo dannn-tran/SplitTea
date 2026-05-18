@@ -15,6 +15,7 @@ type ValidationError =
     | CurrencyMismatch        of expected: CurrencyCode * actual: CurrencyCode
     | ActorNotMember          of MemberId
     | CannotRenameOtherMember
+    | DuplicateMember         of MemberId
 
 module Validation =
     let private checkActor (members: Map<MemberId, Member>) (actorId: MemberId) =
@@ -71,7 +72,9 @@ module Validation =
         let errors =
             match event with
             | SpaceCreated _ -> []
-            | MemberAdded _ -> []
+            | MemberAdded e ->
+                let id = e.Payload.Member.Id
+                if Map.containsKey id state.Members then [ DuplicateMember id ] else []
             | ExpenseAdded e ->
                 let p = e.Payload
                 checkActor state.Members e.ActorId

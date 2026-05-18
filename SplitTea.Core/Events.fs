@@ -6,7 +6,6 @@ type EventEnvelope<'Payload> = {
     Sequence: int64
     ActorId: MemberId
     OccurredAt: System.DateTimeOffset
-    CreatedAt: System.DateTimeOffset
     Payload: 'Payload
 }
 
