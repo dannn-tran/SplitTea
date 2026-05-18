@@ -63,22 +63,26 @@ let insertEvent (connString: string) (eventJson: string) : Async<Result<unit, st
             return Error ex.Message
     }
 
-// Inserts (space_id, user_id) into space_access.
-// Called before inserting the first SpaceCreated event for a new space.
+// Inserts (space_id, user_id) into space_access inside a transaction.
+// The count check and insert are atomic: prevents two concurrent SpaceCreated events
+// for the same space_id from both succeeding (TOCTOU).
 let claimSpace (connString: string) (spaceId: System.Guid) (userId: System.Guid) : Async<Result<unit, string>> =
     async {
         try
             use conn = new NpgsqlConnection(connString)
             do! conn.OpenAsync() |> Async.AwaitTask
-            // Verify the space has no existing events (prevent claiming an existing space).
+            use! tx = conn.BeginTransactionAsync() |> Async.AwaitTask
             use checkCmd = conn.CreateCommand()
+            checkCmd.Transaction <- tx
             checkCmd.CommandText <- "SELECT COUNT(*) FROM public.events WHERE space_id = $1"
             checkCmd.Parameters.AddWithValue("$1", spaceId) |> ignore
             let! count = checkCmd.ExecuteScalarAsync() |> Async.AwaitTask
             if (count :?> int64) > 0L then
+                do! tx.RollbackAsync() |> Async.AwaitTask
                 return Error "Space already exists"
             else
                 use insertCmd = conn.CreateCommand()
+                insertCmd.Transaction <- tx
                 insertCmd.CommandText <-
                     "INSERT INTO public.space_access (space_id, user_id)
                      VALUES ($1, $2)
@@ -86,6 +90,7 @@ let claimSpace (connString: string) (spaceId: System.Guid) (userId: System.Guid)
                 insertCmd.Parameters.AddWithValue("$1", spaceId) |> ignore
                 insertCmd.Parameters.AddWithValue("$2", userId)   |> ignore
                 do! insertCmd.ExecuteNonQueryAsync() |> Async.AwaitTask |> Async.Ignore
+                do! tx.CommitAsync() |> Async.AwaitTask
                 return Ok ()
         with ex ->
             return Error ex.Message

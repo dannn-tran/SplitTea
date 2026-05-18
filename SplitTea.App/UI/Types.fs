@@ -23,6 +23,15 @@ type CreateSpaceForm = {
     Error         : string option
 }
 
+type ConfirmAction =
+    | ConfirmDeleteExpense of ExpenseId
+    | ConfirmLeaveSpace
+
+type ConfirmRequest = {
+    Message : string
+    Action  : ConfirmAction
+}
+
 type SplitMode = EqualSplit | CustomSplit
 
 type ExpenseForm = {
@@ -87,6 +96,7 @@ type Model = {
     ShowSpaceSwitcher    : bool
     KnownSpaces          : Storage.SpaceSummary list
     CreateSpaceForm      : CreateSpaceForm
+    ConfirmDialog        : ConfirmRequest option
 #if DEVMODE
     DevActorId           : MemberId option
 #endif
@@ -150,6 +160,8 @@ type Msg =
     | SwitchToSpace          of SpaceId
     | DeleteSpaceClick
     | SpaceDeleted           of Result<unit, string>
+    | RequestConfirm         of ConfirmRequest
+    | ConfirmResolved        of bool
     | CreateSpaceNameSet     of string
     | CreateSpaceCurrencySet of string
     | CreateSpaceMemberSet   of string

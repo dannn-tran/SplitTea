@@ -146,6 +146,7 @@ let init () : Model * Cmd<Msg> =
         Conflicts            = []
         KnownSpaces          = Storage.getKnownSpaces ()
         CreateSpaceForm      = emptyCreateSpaceForm
+        ConfirmDialog        = None
 #if DEVMODE
         DevActorId     = getDevActorId ()
 #endif
@@ -385,20 +386,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             { model with Page = AddExpense; ExpenseForm = form; EditingExpenseId = Some expenseId }, Cmd.none
 
     | DeleteExpenseClick expenseId ->
-        match model.ActiveSpaceId with
-        | None -> model, Cmd.none
-        | Some sid ->
-            let confirmed : bool = Fable.Core.JsInterop.emitJsExpr () "window.confirm('Delete this expense?')"
-            if not confirmed then model, Cmd.none
-            else
-                let actorId = resolveActor model
-                let cmd =
-                    Cmd.OfAsync.either
-                        (fun () -> Commands.deleteExpense sid actorId expenseId)
-                        ()
-                        (fun () -> ExpenseDeleted (Ok ()))
-                        (fun ex -> ExpenseDeleted (Error ex.Message))
-                model, cmd
+        { model with ConfirmDialog = Some { Message = "Delete this expense?"; Action = ConfirmDeleteExpense expenseId } }, Cmd.none
 
     | RecordSettlementClick ->
         let n   = model.SpaceState.Members.Count
@@ -495,14 +483,16 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                     let category = if form.Category = "" then None else Some form.Category
                     let notes    = if form.Notes.Trim() = "" then None else Some (form.Notes.Trim())
                     let cmd =
-                        match model.EditingExpenseId with
-                        | Some expId ->
+                        match model.EditingExpenseId, model.EditingExpenseId |> Option.bind (fun eid -> Map.tryFind eid model.SpaceState.Expenses) with
+                        | Some _, Some original ->
                             Cmd.OfAsync.either
-                                (fun () -> Commands.correctExpense sid actorId expId form.Description amount form.Currency rateOpt' paidById split date category notes)
+                                (fun () -> Commands.correctExpense sid actorId original form.Description amount form.Currency rateOpt' paidById split date category notes)
                                 ()
                                 (fun () -> ExpenseCorrected (Ok ()))
                                 (fun ex  -> ExpenseCorrected (Error ex.Message))
-                        | None ->
+                        | Some _, None ->
+                            Cmd.ofMsg (ExpenseCorrected (Error "Expense no longer exists."))
+                        | None, _ ->
                             Cmd.OfAsync.either
                                 (fun () -> Commands.addExpense sid actorId form.Description amount form.Currency rateOpt' paidById split date category notes)
                                 ()
@@ -704,8 +694,8 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             { model with IsEditingSpaceName = false; SpaceNameText = "" }, cmd
         | None -> { model with IsEditingSpaceName = false }, Cmd.none
 
-    | SpaceNameSaved (Error _) ->
-        { model with IsEditingSpaceName = false }, Cmd.none
+    | SpaceNameSaved (Error err) ->
+        { model with IsEditingSpaceName = false; Toast = Some $"Failed to rename space: %s{err}" }, Cmd.none
 
     | StartProfileRename ->
         let name = resolveActor model
@@ -756,19 +746,42 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             { model with ShowSpaceSwitcher = false; ActiveSpaceId = Some sid; Page = SpaceOverview }, cmd
 
     | DeleteSpaceClick ->
-        match model.ActiveSpaceId with
+        { model with ConfirmDialog = Some { Message = "Leave this space? It will be removed from this device."; Action = ConfirmLeaveSpace } }, Cmd.none
+
+    | RequestConfirm req ->
+        { model with ConfirmDialog = Some req }, Cmd.none
+
+    | ConfirmResolved false ->
+        { model with ConfirmDialog = None }, Cmd.none
+
+    | ConfirmResolved true ->
+        match model.ConfirmDialog with
         | None -> model, Cmd.none
-        | Some sid ->
-            let confirmed : bool = emitJsExpr () "window.confirm('Delete this space? All data will be permanently lost.')"
-            if not confirmed then model, Cmd.none
-            else
+        | Some { Action = ConfirmDeleteExpense expenseId } ->
+            let model' = { model with ConfirmDialog = None }
+            match model.ActiveSpaceId with
+            | None -> model', Cmd.none
+            | Some sid ->
+                let actorId = resolveActor model
+                let cmd =
+                    Cmd.OfAsync.either
+                        (fun () -> Commands.deleteExpense sid actorId expenseId)
+                        ()
+                        (fun () -> ExpenseDeleted (Ok ()))
+                        (fun ex  -> ExpenseDeleted (Error ex.Message))
+                model', cmd
+        | Some { Action = ConfirmLeaveSpace } ->
+            let model' = { model with ConfirmDialog = None }
+            match model.ActiveSpaceId with
+            | None -> model', Cmd.none
+            | Some sid ->
                 let cmd =
                     Cmd.OfAsync.either
                         (fun () -> Storage.deleteSpace sid)
                         ()
                         (fun () -> SpaceDeleted (Ok ()))
                         (fun ex  -> SpaceDeleted (Error ex.Message))
-                model, cmd
+                model', cmd
 
     | SpaceDeleted (Ok ()) ->
         let remaining = Storage.getKnownSpaces ()
@@ -783,7 +796,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
                          ActiveSpaceId = None; SpaceState = SpaceState.Empty; Page = CreateSpace }, Cmd.none
 
     | SpaceDeleted (Error err) ->
-        { model with Toast = Some $"Delete failed: %s{err}" }, Cmd.none
+        { model with Toast = Some $"Failed to leave space: %s{err}" }, Cmd.none
 
     | CreateSpaceNameSet text ->
         { model with CreateSpaceForm = { model.CreateSpaceForm with SpaceNameText = text; Error = None } }, Cmd.none
@@ -1125,11 +1138,51 @@ let view (model: Model) (dispatch: Msg -> unit) =
     let nav      = if isSpaceTab then bottomNav model dispatch else Html.none
     let switcher = if model.ShowSpaceSwitcher then spaceSwitcherSheet model dispatch else Html.none
 
+    let confirmModal =
+        match model.ConfirmDialog with
+        | None -> Html.none
+        | Some req ->
+            Html.div [
+                prop.className "fixed inset-0 z-50 flex items-center justify-center"
+                prop.children [
+                    Html.div [
+                        prop.className "absolute inset-0 bg-black/40"
+                        prop.onClick (fun _ -> dispatch (ConfirmResolved false))
+                    ]
+                    Html.div [
+                        prop.className "relative bg-white rounded-2xl shadow-xl p-6 mx-4 max-w-sm w-full space-y-4"
+                        prop.children [
+                            Html.p [
+                                prop.className "text-sm text-gray-700"
+                                prop.text req.Message
+                            ]
+                            Html.div [
+                                prop.className "flex gap-3"
+                                prop.children [
+                                    Html.button [
+                                        prop.type' "button"
+                                        prop.className Styles.btnBarSecondary
+                                        prop.text "Cancel"
+                                        prop.onClick (fun _ -> dispatch (ConfirmResolved false))
+                                    ]
+                                    Html.button [
+                                        prop.type' "button"
+                                        prop.className "flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-xl transition-colors"
+                                        prop.text "Confirm"
+                                        prop.onClick (fun _ -> dispatch (ConfirmResolved true))
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+
 #if DEVMODE
     if DevMode.isEnabled () && not model.SpaceState.Members.IsEmpty then
-        Html.div [ prop.children [ inner; nav; devActorBadge model dispatch; switcher; toast ] ]
+        Html.div [ prop.children [ inner; nav; devActorBadge model dispatch; switcher; toast; confirmModal ] ]
     else
-        Html.div [ prop.children [ inner; nav; switcher; toast ] ]
+        Html.div [ prop.children [ inner; nav; switcher; toast; confirmModal ] ]
 #else
-    Html.div [ prop.children [ inner; nav; switcher; toast ] ]
+    Html.div [ prop.children [ inner; nav; switcher; toast; confirmModal ] ]
 #endif

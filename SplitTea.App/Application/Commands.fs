@@ -110,7 +110,7 @@ let archiveCategory
 let correctExpense
     (spaceId:      SpaceId)
     (actorId:      MemberId)
-    (expenseId:    ExpenseId)
+    (original:     ExpenseState)
     (description:  string)
     (paidAmount:   Amount)
     (paidCurrency: CurrencyCode)
@@ -121,17 +121,23 @@ let correctExpense
     (category:     string option)
     (notes:        string option)
     : Async<unit> =
+    let diffOpt eq newVal oldVal = if eq newVal oldVal then None else Some newVal
+    let diffPatch newOpt oldOpt =
+        match newOpt, oldOpt with
+        | n, o when n = o -> Unchanged
+        | Some v, _       -> SetTo v
+        | None, _         -> Clear
     ExpenseCorrected (mkEnvelope spaceId actorId {
-        OriginalExpenseId = expenseId
-        Description       = Some description
-        PaidAmount        = Some paidAmount
-        PaidCurrency      = Some paidCurrency
-        ExchangeRate      = match exchangeRate with Some r -> SetTo r | None -> Clear
-        PaidBy            = Some paidBy
-        Split             = Some split
-        Date              = Some date
-        Category          = match category with Some c -> SetTo c | None -> Clear
-        Notes             = match notes with Some n -> SetTo n | None -> Clear
+        OriginalExpenseId = original.ExpenseId
+        Description       = diffOpt (=) description original.Description
+        PaidAmount        = diffOpt (=) paidAmount   original.PaidAmount
+        PaidCurrency      = diffOpt (=) paidCurrency original.PaidCurrency
+        ExchangeRate      = diffPatch exchangeRate    original.ExchangeRate
+        PaidBy            = diffOpt (=) paidBy        original.PaidBy
+        Split             = diffOpt (=) split          original.Split
+        Date              = diffOpt (=) date           original.Date
+        Category          = diffPatch category          original.Category
+        Notes             = diffPatch notes             original.Notes
         Reason            = None
     })
     |> Storage.saveEvent

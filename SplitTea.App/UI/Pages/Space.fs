@@ -232,7 +232,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                             Html.button [
                                 prop.type' "button"
                                 prop.className "w-full text-sm text-red-600 hover:text-red-800 font-medium py-2 transition-colors"
-                                prop.text "Delete Space"
+                                prop.text "Leave Space"
                                 prop.onClick (fun _ -> dispatch UITypes.DeleteSpaceClick)
                             ]
                         ]
