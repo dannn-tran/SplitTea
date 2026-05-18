@@ -1,20 +1,25 @@
 namespace SplitTea.Core
 
 type ValidationError =
-    | UnknownMember         of MemberId
-    | UnknownExpense        of ExpenseId
-    | UnknownCategory       of string
-    | ArchivedCategory      of string
-    | DeletedExpense        of ExpenseId
+    | UnknownMember           of MemberId
+    | UnknownExpense          of ExpenseId
+    | UnknownCategory         of string
+    | ArchivedCategory        of string
+    | DeletedExpense          of ExpenseId
     | AmountMustBePositive
     | SplitMustHaveMembers
-    | ExactSplitSumMismatch of expected: Amount * actual: Amount
-    | PercentageSumMismatch of expected: decimal * actual: decimal
+    | ExactSplitSumMismatch   of expected: Amount * actual: Amount
+    | PercentageSumMismatch   of expected: decimal * actual: decimal
     | SharesMustBePositive
     | SelfSettlement
-    | CurrencyMismatch      of expected: CurrencyCode * actual: CurrencyCode
+    | CurrencyMismatch        of expected: CurrencyCode * actual: CurrencyCode
+    | ActorNotMember          of MemberId
+    | CannotRenameOtherMember
 
 module Validation =
+    let private checkActor (members: Map<MemberId, Member>) (actorId: MemberId) =
+        if Map.containsKey actorId members then [] else [ ActorNotMember actorId ]
+
     let private checkAmount (amount: Amount) =
         if amount <= 0m then [ AmountMustBePositive ] else []
 
@@ -106,10 +111,13 @@ module Validation =
                 @ checkMember state.Members p.To
                 @ (if p.From = p.To then [ SelfSettlement ] else [])
                 @ checkAmount p.Amount
-            | CategoryAdded _ -> []
-            | CategoryRenamed _ -> []
-            | CategoryArchived _ -> []
-            | SpaceRenamed _ -> []
-            | MemberRenamed _ -> []
+            | SpaceRenamed e    -> checkActor state.Members e.ActorId
+            | CategoryAdded e   -> checkActor state.Members e.ActorId
+            | CategoryRenamed e -> checkActor state.Members e.ActorId
+            | CategoryArchived e -> checkActor state.Members e.ActorId
+            | MemberRenamed e ->
+                checkActor state.Members e.ActorId
+                @ checkMember state.Members e.Payload.MemberId
+                @ (if e.ActorId <> e.Payload.MemberId then [ CannotRenameOtherMember ] else [])
 
         if List.isEmpty errors then Ok event else Error errors

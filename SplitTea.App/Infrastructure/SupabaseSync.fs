@@ -30,15 +30,43 @@ let private fromSupabase (remote: obj) : obj =
         "synced"     ==> true
     ]
 
-let pushEvent (local: obj) : Async<Result<unit, string>> =
+let private lambdaUrl : string = emitJsExpr () "import.meta.env.VITE_LAMBDA_URL"
+let private jsonStringify (o: obj) : string = emitJsExpr o "JSON.stringify($0)"
+
+// Posts the raw local event JSON to the Lambda write-proxy for validation + storage.
+let pushEvent (local: obj) (authToken: string) : Async<Result<unit, string>> =
     async {
-        let! result =
-            supabase?from("events")?insert(toSupabase local)
+        try
+            let init =
+                createObj [
+                    "method"  ==> "POST"
+                    "headers" ==> createObj [
+                        "Content-Type"  ==> "application/json"
+                        "Authorization" ==> ("Bearer " + authToken)
+                    ]
+                    "body"    ==> jsonStringify local
+                ]
+            let url = lambdaUrl + "/events"
+            let! response = emitJsExpr (url, init) "fetch($0, $1)" |> Async.AwaitPromise
+            let ok : bool = response?ok
+            if ok then
+                return Ok ()
+            else
+                let status : int = response?status
+                let! text = (response?text() : JS.Promise<string>) |> Async.AwaitPromise
+                return Error (sprintf "Lambda %d: %s" status text)
+        with ex ->
+            return Error ex.Message
+    }
+
+// Removes the current user's space_access row, revoking their server-side access.
+// Uses the authenticated Supabase client so RLS (space_access_delete_own policy) applies.
+let removeSpaceAccess (spaceId: string) : Async<unit> =
+    async {
+        let! _ =
+            supabase?from("space_access")?delete()?eq("space_id", spaceId)
             |> Async.AwaitPromise
-        if isNull result?error then
-            return Ok ()
-        else
-            return Error (string result?error?message)
+        ()
     }
 
 // Returns an unsubscribe function.

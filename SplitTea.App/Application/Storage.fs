@@ -119,4 +119,6 @@ let deleteSpace (spaceId: SpaceId) : Async<unit> =
     async {
         do! IndexedDb.deleteEventsBySpace (spaceIdStr spaceId)
         removeKnownSpace spaceId
+        // Revoke server-side access. Fire-and-forget: local data is already gone.
+        do! SupabaseSync.removeSpaceAccess (spaceIdStr spaceId)
     }

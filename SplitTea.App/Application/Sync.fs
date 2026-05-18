@@ -3,9 +3,9 @@ module Sync
 open Fable.Core.JsInterop
 open SplitTea.Core
 
-// Push all locally-saved unsynced events to Supabase, marking each synced on success.
+// Push all locally-saved unsynced events to the Lambda write-proxy, marking each synced on success.
 // Failures are silently skipped — the event stays pending and will retry next time.
-let pushPending () : Async<unit> =
+let pushPending (authToken: string) : Async<unit> =
     async {
 #if DEVMODE
         if DevMode.isEnabled () then
@@ -14,7 +14,7 @@ let pushPending () : Async<unit> =
 #endif
             let! pending = IndexedDb.getPendingEvents ()
             for raw in pending do
-                let! result = SupabaseSync.pushEvent raw
+                let! result = SupabaseSync.pushEvent raw authToken
                 match result with
                 | Ok ()    -> do! IndexedDb.markSynced (string raw?id)
                 | Error _  -> ()

@@ -5,20 +5,25 @@ open Fable.Core.JsInterop
 open SupabaseClient
 
 type AuthUser = {
-    Id    : string
-    Email : string option
+    Id          : string
+    Email       : string option
+    AccessToken : string
 }
 
 type AuthEvent =
     | SignedIn  of AuthUser
     | SignedOut
 
-let private mapUser (jsUser: obj) : AuthUser option =
+let private mapUser (jsUser: obj) (session: obj) : AuthUser option =
     if isNull jsUser then None
     else
+        let token =
+            if isNull session || isNull session?access_token then ""
+            else string session?access_token
         Some {
-            Id    = jsUser?id
-            Email = if isNull jsUser?email then None else Some (string jsUser?email)
+            Id          = jsUser?id
+            Email       = if isNull jsUser?email then None else Some (string jsUser?email)
+            AccessToken = token
         }
 
 let signInWithMagicLink (email: string) : Async<Result<unit, string>> =
@@ -51,13 +56,16 @@ let getUser () : Async<AuthUser option> =
 #if DEVMODE
         if DevMode.isEnabled () then
             return Some {
-                Id = string DevMode.fakeUserId
-                Email = Some DevMode.fakeUserEmail
+                Id          = string DevMode.fakeUserId
+                Email       = Some DevMode.fakeUserEmail
+                AccessToken = ""
             }
         else
 #endif
-        let! result = supabase?auth?getUser() |> Async.AwaitPromise
-        return mapUser result?data?user
+        let! result = supabase?auth?getSession() |> Async.AwaitPromise
+        let session = result?data?session
+        let user    = if isNull session then null else session?user
+        return mapUser user session
     }
 
 // Returns an unsubscribe function.
@@ -65,8 +73,9 @@ let subscribe (callback: AuthEvent -> unit) : unit -> unit =
 #if DEVMODE
     if DevMode.isEnabled () then
         let user = {
-            Id = string DevMode.fakeUserId
-            Email = Some DevMode.fakeUserEmail
+            Id          = string DevMode.fakeUserId
+            Email       = Some DevMode.fakeUserEmail
+            AccessToken = ""
         }
         callback (SignedIn user)
         fun () -> ()
@@ -75,7 +84,7 @@ let subscribe (callback: AuthEvent -> unit) : unit -> unit =
     let sub =
         supabase?auth?onAuthStateChange(fun (event: string) (session: obj) ->
             if event = "SIGNED_IN" && not (isNull session) then
-                match mapUser (session?user) with
+                match mapUser (session?user) session with
                 | Some user -> callback (SignedIn user)
                 | None      -> callback SignedOut
             else

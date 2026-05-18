@@ -238,7 +238,8 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | SpaceLoaded (sid, ss) ->
         setActiveSpaceId sid
         Storage.upsertKnownSpace sid ss.Name
-        let syncCmd = Cmd.OfAsync.attempt (fun () -> Sync.pushPending ()) () (fun _ -> SyncDone)
+        let authToken = model.Auth |> Option.map (fun u -> u.AccessToken) |> Option.defaultValue ""
+        let syncCmd = Cmd.OfAsync.attempt (fun () -> Sync.pushPending authToken) () (fun _ -> SyncDone)
         let fxCmd   =
             Cmd.OfAsync.either
                 (fun () -> FxRates.getRates ss.Currency)

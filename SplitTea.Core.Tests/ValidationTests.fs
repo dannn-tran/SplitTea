@@ -207,3 +207,82 @@ module ``validateEvent SettlementRecorded`` =
     [<Fact>]
     let ``foreign currency settlement is valid`` () =
         assertOk (validate { basePayload with Currency = "EUR"; ExchangeRate = Some 1.17m })
+
+module ``validateEvent MemberRenamed`` =
+    let private validate (actorId: MemberId) (memberId: MemberId) =
+        Validation.validateEvent (makeBaseState ())
+            (MemberRenamed (envelope actorId 10 { MemberId = memberId; NewName = "New" }))
+
+    [<Fact>]
+    let ``returns Ok when actor renames themselves`` () =
+        assertOk (validate aliceId aliceId)
+
+    [<Fact>]
+    let ``CannotRenameOtherMember when actor renames a different member`` () =
+        assertError CannotRenameOtherMember (validate aliceId bobId)
+
+    [<Fact>]
+    let ``UnknownMember when memberId not in space`` () =
+        assertError (UnknownMember unknownMemberId) (validate aliceId unknownMemberId)
+
+    [<Fact>]
+    let ``ActorNotMember when actorId not in space`` () =
+        assertError (ActorNotMember unknownMemberId) (validate unknownMemberId aliceId)
+
+module ``validateEvent SpaceRenamed`` =
+    let private validate (actorId: MemberId) =
+        Validation.validateEvent (makeBaseState ())
+            (SpaceRenamed (envelope actorId 10 { NewName = "New Name" }))
+
+    [<Fact>]
+    let ``returns Ok for known actor`` () =
+        assertOk (validate aliceId)
+
+    [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        assertError (ActorNotMember unknownMemberId) (validate unknownMemberId)
+
+module ``validateEvent CategoryAdded`` =
+    let private validate (actorId: MemberId) =
+        Validation.validateEvent (makeBaseState ())
+            (CategoryAdded (envelope actorId 10 { Name = "Misc" }))
+
+    [<Fact>]
+    let ``returns Ok for known actor`` () =
+        assertOk (validate aliceId)
+
+    [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        assertError (ActorNotMember unknownMemberId) (validate unknownMemberId)
+
+module ``validateEvent CategoryRenamed`` =
+    let private baseState () =
+        makeBaseState () |> fun s -> Reducer.reduce s (CategoryAdded (envelope aliceId 5 { Name = "Old" }))
+
+    let private validate (actorId: MemberId) =
+        Validation.validateEvent (baseState ())
+            (CategoryRenamed (envelope actorId 10 { OldName = "Old"; NewName = "New" }))
+
+    [<Fact>]
+    let ``returns Ok for known actor`` () =
+        assertOk (validate aliceId)
+
+    [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        assertError (ActorNotMember unknownMemberId) (validate unknownMemberId)
+
+module ``validateEvent CategoryArchived`` =
+    let private baseState () =
+        makeBaseState () |> fun s -> Reducer.reduce s (CategoryAdded (envelope aliceId 5 { Name = "Food" }))
+
+    let private validate (actorId: MemberId) =
+        Validation.validateEvent (baseState ())
+            (CategoryArchived (envelope actorId 10 { Name = "Food" }))
+
+    [<Fact>]
+    let ``returns Ok for known actor`` () =
+        assertOk (validate aliceId)
+
+    [<Fact>]
+    let ``ActorNotMember for unknown actor`` () =
+        assertError (ActorNotMember unknownMemberId) (validate unknownMemberId)
