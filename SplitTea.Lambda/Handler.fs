@@ -29,6 +29,7 @@ let private respond (status: int) (body: string) : APIGatewayHttpApiV2ProxyRespo
 let private ok ()       = respond 200 """{"ok":true}"""
 let private badRequest  = respond 400
 let private unauthorized = respond 401 """{"error":"Unauthorized"}"""
+let private forbidden    = respond 403 """{"error":"Forbidden"}"""
 let private unprocessable (errors: string) = respond 422 errors
 let private serverError (msg: string) = respond 500 (JsonSerializer.Serialize({| error = msg |}, jsonOpts))
 
@@ -46,21 +47,48 @@ let private findMemberId (state: SpaceState) (userId: UserId) : MemberId option 
     state.Members
     |> Map.tryFindKey (fun _ m -> m.UserId = Some userId)
 
-// Overwrite the actorId in any SpaceEvent envelope with the verified actor.
-let private stampActor (actorId: MemberId) (event: SpaceEvent) : SpaceEvent =
-    let stamp (env: EventEnvelope<'p>) = { env with ActorId = actorId }
-    match event with
-    | SpaceCreated e       -> SpaceCreated       (stamp e)
-    | SpaceRenamed e       -> SpaceRenamed       (stamp e)
-    | MemberAdded e        -> MemberAdded        (stamp e)
-    | MemberRenamed e      -> MemberRenamed      (stamp e)
-    | CategoryAdded e      -> CategoryAdded      (stamp e)
-    | CategoryRenamed e    -> CategoryRenamed    (stamp e)
-    | CategoryArchived e   -> CategoryArchived   (stamp e)
-    | ExpenseAdded e       -> ExpenseAdded       (stamp e)
-    | ExpenseCorrected e   -> ExpenseCorrected   (stamp e)
-    | ExpenseDeleted e     -> ExpenseDeleted     (stamp e)
-    | SettlementRecorded e -> SettlementRecorded (stamp e)
+let private stampActor = SpaceEvent.withActorId
+
+// Extracts spaceId from paths like /spaces/{guid}/balances.
+let private tryParseBalancesPath (path: string) : SpaceId option =
+    if path = null then None
+    else
+        let parts = path.TrimStart('/').Split('/')
+        if parts.Length = 3 && parts.[0] = "spaces" && parts.[2] = "balances" then
+            match Guid.TryParse parts.[1] with
+            | true, g -> Some (SpaceId g)
+            | _       -> None
+        else None
+
+let private handleGetBalances (req: APIGatewayHttpApiV2ProxyRequest) (userId: UserId) (spaceId: SpaceId) =
+    async {
+        let! hasAccess = EventRepository.userHasAccess connString spaceId userId
+        if not hasAccess then
+            return forbidden
+        else
+            let! state = EventRepository.loadSpaceState connString spaceId
+            let positions = Projections.computeNetPositions state
+            let settlements = Projections.computeMinimumSettlements positions
+            let memberName (mid: MemberId) =
+                let (MemberId g) = mid
+                state.Members
+                |> Map.tryFind mid
+                |> Option.map (fun m -> m.DisplayName)
+                |> Option.defaultValue (string g)
+            let result = {|
+                currency    = state.Currency
+                positions   = positions |> List.map (fun p ->
+                    let (MemberId g) = p.MemberId
+                    {| memberId = string g; memberName = memberName p.MemberId; amount = p.Amount |})
+                settlements = settlements |> List.map (fun s ->
+                    let (MemberId fg) = s.From
+                    let (MemberId tg) = s.To
+                    {| from = string fg; fromName = memberName s.From
+                       ``to`` = string tg; toName = memberName s.To
+                       amount = s.Amount |})
+            |}
+            return respond 200 (JsonSerializer.Serialize(result, jsonOpts))
+    }
 
 let handler (req: APIGatewayHttpApiV2ProxyRequest) (_ctx: ILambdaContext) : Async<APIGatewayHttpApiV2ProxyResponse> =
     async {
@@ -74,6 +102,15 @@ let handler (req: APIGatewayHttpApiV2ProxyRequest) (_ctx: ILambdaContext) : Asyn
             | Ok userIdStr ->
                 let userId = UserId (Guid.Parse userIdStr)
 
+                // 1a. Route GET /spaces/:id/balances before reading the body.
+                let httpCtx = if req.RequestContext <> null then req.RequestContext.Http else null
+                let method  = if httpCtx <> null then httpCtx.Method else null
+                let path    = if httpCtx <> null then httpCtx.Path   else null
+                match method, tryParseBalancesPath path with
+                | "GET", Some spaceId ->
+                    return! handleGetBalances req userId spaceId
+                | _ ->
+
                 // 2. Parse event from request body.
                 if String.IsNullOrWhiteSpace req.Body then
                     return badRequest """{"error":"Empty body"}"""
@@ -84,41 +121,35 @@ let handler (req: APIGatewayHttpApiV2ProxyRequest) (_ctx: ILambdaContext) : Asyn
                     | Ok event ->
 
                         // 3. Determine spaceId and load current state.
-                        let spaceId =
-                            match event with
-                            | SpaceCreated e       -> e.SpaceId
-                            | SpaceRenamed e       -> e.SpaceId
-                            | MemberAdded e        -> e.SpaceId
-                            | MemberRenamed e      -> e.SpaceId
-                            | CategoryAdded e      -> e.SpaceId
-                            | CategoryRenamed e    -> e.SpaceId
-                            | CategoryArchived e   -> e.SpaceId
-                            | ExpenseAdded e       -> e.SpaceId
-                            | ExpenseCorrected e   -> e.SpaceId
-                            | ExpenseDeleted e     -> e.SpaceId
-                            | SettlementRecorded e -> e.SpaceId
+                        let spaceId = SpaceEvent.getSpaceId event
+                        let isSpaceCreated = match event with SpaceCreated _ -> true | _ -> false
+
+                        // 3a. Access gate: non-SpaceCreated events require an existing space_access row.
+                        let! hasAccess =
+                            if isSpaceCreated then async { return true }
+                            else EventRepository.userHasAccess connString spaceId userId
+
+                        if not hasAccess then
+                            return forbidden
+                        else
 
                         let! state = EventRepository.loadSpaceState connString spaceId
 
                         // 4. Resolve actorId from state.
-                        //    For SpaceCreated/MemberAdded the space is empty so the member
-                        //    doesn't exist yet — fall back to the client-supplied value.
-                        let clientActorId =
-                            match event with
-                            | SpaceCreated e       -> e.ActorId
-                            | SpaceRenamed e       -> e.ActorId
-                            | MemberAdded e        -> e.ActorId
-                            | MemberRenamed e      -> e.ActorId
-                            | CategoryAdded e      -> e.ActorId
-                            | CategoryRenamed e    -> e.ActorId
-                            | CategoryArchived e   -> e.ActorId
-                            | ExpenseAdded e       -> e.ActorId
-                            | ExpenseCorrected e   -> e.ActorId
-                            | ExpenseDeleted e     -> e.ActorId
-                            | SettlementRecorded e -> e.ActorId
+                        //    Fall back to clientActorId only during bootstrap (space has no members yet)
+                        //    so the creator can add the first MemberAdded event.
+                        //    For all other cases, fail-closed — the user must be a recognized member.
+                        let clientActorId = SpaceEvent.getActorId event
 
-                        let actorId =
-                            findMemberId state userId |> Option.defaultValue clientActorId
+                        let actorIdOpt =
+                            match findMemberId state userId with
+                            | Some id -> Some id
+                            | None when Map.isEmpty state.Members -> Some clientActorId
+                            | None -> None
+
+                        match actorIdOpt with
+                        | None -> return forbidden
+                        | Some actorId ->
 
                         let stamped = stampActor actorId event
 

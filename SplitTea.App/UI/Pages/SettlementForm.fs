@@ -4,14 +4,9 @@ open Feliz
 open SplitTea.Core
 open UITypes
 
-let private commonCurrencies = [ "AUD"; "CAD"; "CHF"; "CNY"; "EUR"; "GBP"; "HKD"; "JPY"; "MYR"; "NZD"; "SGD"; "USD" ]
 
-let private currencyOptions (groupCurrency: string) =
-    let all = if List.contains groupCurrency commonCurrencies then commonCurrencies else groupCurrency :: commonCurrencies
-    all |> List.map (fun c -> Html.option [ prop.value c; prop.text c ])
-
-let private amountWithCurrencyRow (amountText: string) (currency: string) (groupCurrency: string)
-    (onAmount: string -> unit) (onCurrency: string -> unit) =
+let private amountWithCurrencyRow (amount: Field<decimal>) (currency: string) (groupCurrency: string)
+    (onAmount: Field<decimal> -> unit) (onCurrency: string -> unit) =
     Html.div [
         prop.className "flex gap-2"
         prop.children [
@@ -20,11 +15,13 @@ let private amountWithCurrencyRow (amountText: string) (currency: string) (group
                 prop.children [
                     Html.input [
                         prop.type' "text"
-                        prop.className Styles.input
+                        prop.className (if amount.IsError then Styles.cx [Styles.input; "border-red-400 focus:ring-red-400"] else Styles.input)
                         prop.placeholder "0.00"
-                        prop.value amountText
-                        prop.onChange onAmount
+                        prop.value amount.Text
+                        prop.onChange (fun v -> onAmount (Field.parseDecimal v))
                     ]
+                    if amount.IsError then
+                        Html.p [ prop.className Styles.error; prop.text "Invalid amount." ]
                 ]
             ]
             Html.div [
@@ -34,7 +31,7 @@ let private amountWithCurrencyRow (amountText: string) (currency: string) (group
                         prop.className Styles.input
                         prop.value currency
                         prop.onChange (fun (v: string) -> onCurrency v)
-                        prop.children (currencyOptions groupCurrency)
+                        prop.children (Currencies.options groupCurrency)
                     ]
                 ]
             ]
@@ -51,17 +48,18 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm
     let set f = dispatch (SettlementFormSet (f form))
     let groupCur = state.Currency
     let memberOptions =
-        members |> List.mapi (fun i m ->
-            Html.option [ prop.value (string i); prop.text m.DisplayName ]
+        members |> List.map (fun m ->
+            let (MemberId g) = m.Id
+            Html.option [ prop.value (string g); prop.text m.DisplayName ]
         )
 
     let isForeign1 = form.Currency <> groupCur
     let isForeign2 = form.UseSecondPayment && form.Currency2 <> groupCur
     let disabled =
-        form.IsSubmitting || form.AmountText.Trim() = ""
-        || (isForeign1 && form.ExchangeRateText.Trim() = "")
-        || (form.UseSecondPayment && form.AmountText2.Trim() = "")
-        || (isForeign2 && form.ExchangeRateText2.Trim() = "")
+        form.IsSubmitting || form.Amount.Parsed = None
+        || (form.UseSecondPayment && form.Amount2.Parsed = None)
+
+    let memberIdStr (id: MemberId) = id |> fun (MemberId g) -> string g
 
     Html.div [
         prop.className "max-w-lg mx-auto px-4 py-8 space-y-6"
@@ -83,15 +81,15 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm
                     Styles.field "From"
                         (Html.select [
                             prop.className Styles.input
-                            prop.value (string form.FromIndex)
-                            prop.onChange (fun (v: string) -> set (fun f -> { f with FromIndex = int v }))
+                            prop.value (memberIdStr form.FromId)
+                            prop.onChange (fun (v: string) -> set (fun f -> { f with FromId = MemberId (System.Guid.Parse v) }))
                             prop.children memberOptions
                         ])
                     Styles.field "To"
                         (Html.select [
                             prop.className Styles.input
-                            prop.value (string form.ToIndex)
-                            prop.onChange (fun (v: string) -> set (fun f -> { f with ToIndex = int v }))
+                            prop.value (memberIdStr form.ToId)
+                            prop.onChange (fun (v: string) -> set (fun f -> { f with ToId = MemberId (System.Guid.Parse v) }))
                             prop.children memberOptions
                         ])
 
@@ -100,23 +98,23 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm
                         prop.children [
                             Html.p [ prop.className "text-xs font-semibold text-gray-400 uppercase tracking-wide"; prop.text "Payment 1" ]
                             Styles.field "Amount"
-                                (amountWithCurrencyRow form.AmountText form.Currency groupCur
-                                    (fun v -> set (fun f -> { f with AmountText = v }))
+                                (amountWithCurrencyRow form.Amount form.Currency groupCur
+                                    (fun v -> set (fun f -> { f with Amount = v }))
                                     (fun v ->
-                                        let rateText =
-                                            FxRates.getRate v groupCur rates
-                                            |> Option.map string
-                                            |> Option.defaultValue ""
-                                        set (fun f -> { f with Currency = v; ExchangeRateText = rateText })))
+                                        set (fun f -> { f with Currency = v; ExchangeRate = Field.parseDecimal (Currencies.prefillRate v groupCur rates) })))
                             if isForeign1 then
                                 Styles.field $"Exchange rate (%s{form.Currency} → %s{groupCur})"
-                                    (Html.input [
-                                        prop.type' "text"
-                                        prop.className Styles.input
-                                        prop.placeholder "e.g. 0.79"
-                                        prop.value form.ExchangeRateText
-                                        prop.onChange (fun v -> set (fun f -> { f with ExchangeRateText = v }))
-                                    ])
+                                    (Html.div [ prop.className "space-y-1"; prop.children [
+                                        Html.input [
+                                            prop.type' "text"
+                                            prop.className (if form.ExchangeRate.IsError then Styles.cx [Styles.input; "border-red-400 focus:ring-red-400"] else Styles.input)
+                                            prop.placeholder "e.g. 0.79"
+                                            prop.value form.ExchangeRate.Text
+                                            prop.onChange (fun v -> set (fun f -> { f with ExchangeRate = Field.parseDecimal v }))
+                                        ]
+                                        if form.ExchangeRate.IsError then
+                                            Html.p [ prop.className Styles.error; prop.text "Invalid exchange rate." ]
+                                    ]])
                         ]
                     ]
 
@@ -131,28 +129,28 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: SettlementForm
                                         Html.button [
                                             prop.className "text-xs text-red-500 hover:text-red-700"
                                             prop.text "Remove"
-                                            prop.onClick (fun _ -> set (fun f -> { f with UseSecondPayment = false; AmountText2 = ""; Currency2 = groupCur; ExchangeRateText2 = "" }))
+                                            prop.onClick (fun _ -> set (fun f -> { f with UseSecondPayment = false; Amount2 = Field.emptyDecimal; Currency2 = groupCur; ExchangeRate2 = Field.emptyDecimal }))
                                         ]
                                     ]
                                 ]
                                 Styles.field "Amount"
-                                    (amountWithCurrencyRow form.AmountText2 form.Currency2 groupCur
-                                        (fun v -> set (fun f -> { f with AmountText2 = v }))
+                                    (amountWithCurrencyRow form.Amount2 form.Currency2 groupCur
+                                        (fun v -> set (fun f -> { f with Amount2 = v }))
                                         (fun v ->
-                                            let rateText =
-                                                FxRates.getRate v groupCur rates
-                                                |> Option.map string
-                                                |> Option.defaultValue ""
-                                            set (fun f -> { f with Currency2 = v; ExchangeRateText2 = rateText })))
+                                            set (fun f -> { f with Currency2 = v; ExchangeRate2 = Field.parseDecimal (Currencies.prefillRate v groupCur rates) })))
                                 if isForeign2 then
                                     Styles.field $"Exchange rate (%s{form.Currency2} → %s{groupCur})"
-                                        (Html.input [
-                                            prop.type' "text"
-                                            prop.className Styles.input
-                                            prop.placeholder "e.g. 0.79"
-                                            prop.value form.ExchangeRateText2
-                                            prop.onChange (fun v -> set (fun f -> { f with ExchangeRateText2 = v }))
-                                        ])
+                                        (Html.div [ prop.className "space-y-1"; prop.children [
+                                            Html.input [
+                                                prop.type' "text"
+                                                prop.className (if form.ExchangeRate2.IsError then Styles.cx [Styles.input; "border-red-400 focus:ring-red-400"] else Styles.input)
+                                                prop.placeholder "e.g. 0.79"
+                                                prop.value form.ExchangeRate2.Text
+                                                prop.onChange (fun v -> set (fun f -> { f with ExchangeRate2 = Field.parseDecimal v }))
+                                            ]
+                                            if form.ExchangeRate2.IsError then
+                                                Html.p [ prop.className Styles.error; prop.text "Invalid exchange rate." ]
+                                        ]])
                             ]
                         ]
 

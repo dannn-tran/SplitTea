@@ -34,7 +34,7 @@ module ``validateEvent MemberAdded`` =
 module ``validateEvent ExpenseAdded`` =
     let private basePayload : ExpenseAddedPayload = {
         ExpenseId = expense1Id; Description = "Test"
-        PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+        PaidAmount = 10m; PaidCurrency = "GBP"; PaidBy = aliceId
         Split = Equal [aliceId; bobId]; Date = date 2024 1 1; Category = None; Notes = None
     }
 
@@ -62,7 +62,7 @@ module ``validateEvent ExpenseAdded`` =
 
     [<Fact>]
     let ``foreign currency expense is valid`` () =
-        assertOk (validate { basePayload with PaidCurrency = "USD"; ExchangeRate = Some 0.79m })
+        assertOk (validate { basePayload with PaidCurrency = "USD" })
 
     [<Fact>]
     let ``UnknownMember for unknown PaidBy`` () =
@@ -89,17 +89,6 @@ module ``validateEvent ExpenseAdded`` =
             (validate { basePayload with Split = split })
 
     [<Fact>]
-    let ``PercentageSumMismatch when percentages don't sum to 100`` () =
-        let split = Percentage [aliceId, 60m; bobId, 30m]  // 90 != 100
-        assertError (PercentageSumMismatch (100m, 90m))
-            (validate { basePayload with Split = split })
-
-    [<Fact>]
-    let ``SharesMustBePositive for zero share`` () =
-        let split = Shares [aliceId, 1; bobId, 0]
-        assertError SharesMustBePositive (validate { basePayload with Split = split })
-
-    [<Fact>]
     let ``collects multiple errors in one result`` () =
         let result = validate { basePayload with PaidAmount = -1m; PaidBy = unknownMemberId }
         assertError AmountMustBePositive result
@@ -108,7 +97,7 @@ module ``validateEvent ExpenseAdded`` =
 module ``validateEvent ExpenseCorrected`` =
     let private baseCorrection : ExpenseCorrectedPayload = {
         OriginalExpenseId = expense1Id
-        Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+        Description = None; PaidAmount = None; PaidCurrency = None
         PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; Reason = None
     }
 
@@ -149,14 +138,14 @@ module ``validateEvent ExpenseCorrected`` =
         // Add expense with Exact split summing to 10, then correct PaidAmount to 20
         let exactExpense = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "Exact"
-            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            PaidAmount = 10m; PaidCurrency = "GBP"; PaidBy = aliceId
             Split = Exact [aliceId, 5m; bobId, 5m]
             Date = date 2024 1 1; Category = None; Notes = None
         })
         let state = makeBaseState () |> fun s -> Reducer.reduce s exactExpense
         let correction = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
-            Description = None; PaidAmount = Some 20m; PaidCurrency = None; ExchangeRate = Unchanged
+            Description = None; PaidAmount = Some 20m; PaidCurrency = None
             PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; Reason = None
         })
         assertError (ExactSplitSumMismatch (20m, 10m))
@@ -199,7 +188,7 @@ module ``validateEvent SettlementRecorded`` =
     let private basePayload : SettlementRecordedPayload = {
         SettlementId = settlement1Id
         From = carolId; To = aliceId
-        Amount = 42m; Currency = "GBP"; ExchangeRate = None
+        Payments = [{ Amount = 42m; Currency = "GBP" }]
         Date = date 2024 1 3; Notes = None
     }
 
@@ -233,11 +222,11 @@ module ``validateEvent SettlementRecorded`` =
 
     [<Fact>]
     let ``AmountMustBePositive for zero amount`` () =
-        assertError AmountMustBePositive (validate { basePayload with Amount = 0m })
+        assertError AmountMustBePositive (validate { basePayload with Payments = [{ Amount = 0m; Currency = "GBP" }] })
 
     [<Fact>]
     let ``foreign currency settlement is valid`` () =
-        assertOk (validate { basePayload with Currency = "EUR"; ExchangeRate = Some 1.17m })
+        assertOk (validate { basePayload with Payments = [{ Amount = 42m; Currency = "EUR" }] })
 
 module ``validateEvent MemberRenamed`` =
     let private validate (actorId: MemberId) (memberId: MemberId) =

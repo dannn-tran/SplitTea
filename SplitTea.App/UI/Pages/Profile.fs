@@ -32,6 +32,7 @@ let view (displayName: string) (email: string option) (model: Model) (dispatch: 
                                             prop.type' "button"
                                             prop.className Styles.btnIconSmPrimary
                                             prop.title "Save"
+                                            prop.ariaLabel "Save name"
                                             prop.onClick (fun _ -> dispatch SaveProfileRename)
                                             prop.children [ Icons.check ]
                                         ]
@@ -46,6 +47,7 @@ let view (displayName: string) (email: string option) (model: Model) (dispatch: 
                                             prop.type' "button"
                                             prop.className Styles.btnIconSmPrimary
                                             prop.title "Edit name"
+                                            prop.ariaLabel "Edit name"
                                             prop.onClick (fun _ -> dispatch StartProfileRename)
                                             prop.children [ Icons.pencil ]
                                         ]
@@ -68,6 +70,36 @@ let view (displayName: string) (email: string option) (model: Model) (dispatch: 
                     | None -> ()
                 ]
             ]
+
+            if model.InstallPromptAvailable then
+                Html.div [
+                    prop.className (Styles.cx [Styles.card; "p-4"])
+                    prop.children [
+                        Html.div [
+                            prop.className "flex items-start justify-between gap-3"
+                            prop.children [
+                                Html.div [
+                                    prop.className "space-y-1"
+                                    prop.children [
+                                        Html.p [ prop.className "text-sm font-semibold text-gray-900"; prop.text "Install SplitTea" ]
+                                        Html.p [ prop.className "text-xs text-gray-500"; prop.text "Add to your home screen for faster access." ]
+                                    ]
+                                ]
+                                Html.button [
+                                    prop.type' "button"
+                                    prop.className "text-gray-400 hover:text-gray-600 text-lg leading-none"
+                                    prop.text "×"
+                                    prop.onClick (fun _ -> dispatch DismissInstallPrompt)
+                                ]
+                            ]
+                        ]
+                        Html.button [
+                            prop.className (Styles.cx [Styles.btnPrimary; "mt-3 text-sm py-2"])
+                            prop.text "Install"
+                            prop.onClick (fun _ -> dispatch InstallApp)
+                        ]
+                    ]
+                ]
 
             Html.button [
                 prop.className "w-full text-sm text-red-600 hover:text-red-800 font-medium py-2 transition-colors"

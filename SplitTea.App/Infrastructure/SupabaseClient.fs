@@ -9,12 +9,6 @@ let private createClientJs (url: string) (key: string) : obj = jsNative
 let private supabaseUrl : string = emitJsExpr () "import.meta.env.VITE_SUPABASE_URL"
 let private supabaseKey : string = emitJsExpr () "import.meta.env.VITE_SUPABASE_ANON_KEY"
 
-#if DEVMODE
 let supabase : obj =
-    if DevMode.isEnabled () then
-        null
-    else
-        createClientJs supabaseUrl supabaseKey
-#else
-let supabase : obj = createClientJs supabaseUrl supabaseKey
-#endif
+    if DevMode.isEnabled () then null
+    else createClientJs supabaseUrl supabaseKey

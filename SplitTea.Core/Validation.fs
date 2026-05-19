@@ -51,22 +51,6 @@ module Validation =
                 let total = shares |> List.sumBy snd
                 let sumErr = if total <> amount then [ ExactSplitSumMismatch(amount, total) ] else []
                 memberErrs @ sumErr
-        | Percentage shares ->
-            if List.isEmpty shares then [ SplitMustHaveMembers ]
-            else
-                let memberErrs = shares |> List.collect (fun (m, _) -> checkMember members m)
-                let total = shares |> List.sumBy snd
-                let sumErr = if total <> 100m then [ PercentageSumMismatch(100m, total) ] else []
-                memberErrs @ sumErr
-        | Shares shares ->
-            if List.isEmpty shares then [ SplitMustHaveMembers ]
-            else
-                let memberErrs = shares |> List.collect (fun (m, _) -> checkMember members m)
-                let shareErrs =
-                    shares
-                    |> List.choose (fun (_, s) -> if s <= 0 then Some SharesMustBePositive else None)
-                    |> List.distinct
-                memberErrs @ shareErrs
 
     let validateEvent (state: SpaceState) (event: SpaceEvent) : Result<SpaceEvent, ValidationError list> =
         let errors =
@@ -117,7 +101,8 @@ module Validation =
                 @ checkMember state.Members p.From
                 @ checkMember state.Members p.To
                 @ (if p.From = p.To then [ SelfSettlement ] else [])
-                @ checkAmount p.Amount
+                @ (if List.isEmpty p.Payments then [ AmountMustBePositive ]
+                   else p.Payments |> List.collect (fun leg -> checkAmount leg.Amount))
             | SpaceRenamed e    -> checkActor state.Members e.ActorId
             | CategoryAdded e   -> checkActor state.Members e.ActorId
             | CategoryRenamed e -> checkActor state.Members e.ActorId

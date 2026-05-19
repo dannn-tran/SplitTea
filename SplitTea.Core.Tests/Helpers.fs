@@ -46,13 +46,13 @@ let carolAdded = MemberAdded (envelope aliceId 4 { Member = carol })
 
 let workedExpense1 = ExpenseAdded (envelope aliceId 5 {
     ExpenseId = expense1Id; Description = "Dinner"
-    PaidAmount = 84m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+    PaidAmount = 84m; PaidCurrency = "GBP"; PaidBy = aliceId
     Split = Equal [aliceId; carolId]; Date = date 2024 1 1; Category = None; Notes = None
 })
 
 let workedExpense2 = ExpenseAdded (envelope bobId 6 {
     ExpenseId = expense2Id; Description = "Hotel"
-    PaidAmount = 164m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = bobId
+    PaidAmount = 164m; PaidCurrency = "GBP"; PaidBy = bobId
     Split = Equal [bobId; carolId]; Date = date 2024 1 2; Category = None; Notes = None
 })
 

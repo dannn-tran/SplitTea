@@ -65,11 +65,7 @@ let pushEvent (local: obj) (authToken: string) : Async<Result<unit, int * string
 // Uses the authenticated Supabase client so RLS (space_access_delete_own policy) applies.
 let removeSpaceAccess (spaceId: string) : Async<unit> =
     async {
-#if DEVMODE
-        if DevMode.isEnabled () then ()
-        else
-#endif
-        if not (isNull supabase) then
+        if not (DevMode.isEnabled ()) && not (isNull supabase) then
             let! _ =
                 supabase?from("space_access")?delete()?eq("space_id", spaceId)
                 |> Async.AwaitPromise

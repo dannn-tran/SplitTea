@@ -15,9 +15,9 @@ let private spendRow (label: string) (currency: string) (amount: decimal) =
         ]
     ]
 
-let view (state: SpaceState) =
-    let categorySpend = Projections.computeSpendingByCategory state
-    let payerSpend    = Projections.computeSpendingByPayer state
+let view (state: SpaceState) (rates: Map<string, decimal>) =
+    let categorySpend = Projections.computeSpendingByCategory state rates
+    let payerSpend    = Projections.computeSpendingByPayer state rates
 
     Html.div [
         prop.className "max-w-lg mx-auto px-4 pt-8 pb-20 space-y-6"

@@ -4,11 +4,6 @@ open Feliz
 open SplitTea.Core
 open UITypes
 
-let private commonCurrencies = [ "AUD"; "CAD"; "CHF"; "CNY"; "EUR"; "GBP"; "HKD"; "JPY"; "MYR"; "NZD"; "SGD"; "USD" ]
-
-let private currencyOptions (groupCurrency: string) =
-    let all = if List.contains groupCurrency commonCurrencies then commonCurrencies else groupCurrency :: commonCurrencies
-    all |> List.map (fun c -> Html.option [ prop.value c; prop.text c ])
 
 let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (isEditing: bool) (dispatch: Msg -> unit) =
     let members =
@@ -28,16 +23,15 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
     let isForeignCurrency = form.Currency <> state.Currency
     let splitValid =
         match form.SplitMode with
-        | EqualSplit -> not (Set.isEmpty form.IncludedIndices)
+        | EqualSplit -> not (Set.isEmpty form.Included)
         | CustomSplit ->
-            let totalAmt = try decimal form.AmountText with _ -> 0m
+            let totalAmt  = form.Amount.Parsed |> Option.defaultValue 0m
             let sharesSum =
                 form.CustomAmounts
                 |> Map.toList
                 |> List.sumBy (fun (_, txt) -> try decimal txt with _ -> 0m)
             totalAmt > 0m && sharesSum = totalAmt
-    let disabled = form.IsSubmitting || form.Description.Trim() = "" || form.AmountText.Trim() = ""
-                   || (isForeignCurrency && form.ExchangeRateText.Trim() = "")
+    let disabled = form.IsSubmitting || form.Description.Trim() = "" || form.Amount.Parsed = None
                    || not splitValid
 
     Html.div [
@@ -72,13 +66,17 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                 prop.className "flex-1"
                                 prop.children [
                                     Styles.field "Amount"
-                                        (Html.input [
-                                            prop.type' "text"
-                                            prop.className Styles.input
-                                            prop.placeholder "0.00"
-                                            prop.value form.AmountText
-                                            prop.onChange (fun v -> set (fun f -> { f with AmountText = v }))
-                                        ])
+                                        (Html.div [ prop.className "space-y-1"; prop.children [
+                                            Html.input [
+                                                prop.type' "text"
+                                                prop.className (if form.Amount.IsError then Styles.cx [Styles.input; "border-red-400 focus:ring-red-400"] else Styles.input)
+                                                prop.placeholder "0.00"
+                                                prop.value form.Amount.Text
+                                                prop.onChange (fun v -> set (fun f -> { f with Amount = Field.parseDecimal v }))
+                                            ]
+                                            if form.Amount.IsError then
+                                                Html.p [ prop.className Styles.error; prop.text "Invalid amount." ]
+                                        ]])
                                 ]
                             ]
                             Html.div [
@@ -89,12 +87,8 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                             prop.className Styles.input
                                             prop.value form.Currency
                                             prop.onChange (fun (v: string) ->
-                                                let rateText =
-                                                    FxRates.getRate v state.Currency rates
-                                                    |> Option.map string
-                                                    |> Option.defaultValue ""
-                                                set (fun f -> { f with Currency = v; ExchangeRateText = rateText }))
-                                            prop.children (currencyOptions state.Currency)
+                                                set (fun f -> { f with Currency = v; ExchangeRate = Field.parseDecimal (Currencies.prefillRate v state.Currency rates) }))
+                                            prop.children (Currencies.options state.Currency)
                                         ])
                                 ]
                             ]
@@ -102,21 +96,26 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                     ]
                     if isForeignCurrency then
                         Styles.field $"Exchange rate (%s{form.Currency} → %s{state.Currency})"
-                            (Html.input [
-                                prop.type' "text"
-                                prop.className Styles.input
-                                prop.placeholder "e.g. 0.79"
-                                prop.value form.ExchangeRateText
-                                prop.onChange (fun v -> set (fun f -> { f with ExchangeRateText = v }))
-                            ])
+                            (Html.div [ prop.className "space-y-1"; prop.children [
+                                Html.input [
+                                    prop.type' "text"
+                                    prop.className (if form.ExchangeRate.IsError then Styles.cx [Styles.input; "border-red-400 focus:ring-red-400"] else Styles.input)
+                                    prop.placeholder "e.g. 0.79"
+                                    prop.value form.ExchangeRate.Text
+                                    prop.onChange (fun v -> set (fun f -> { f with ExchangeRate = Field.parseDecimal v }))
+                                ]
+                                if form.ExchangeRate.IsError then
+                                    Html.p [ prop.className Styles.error; prop.text "Invalid exchange rate." ]
+                            ]])
                     Styles.field "Paid by"
                         (Html.select [
                             prop.className Styles.input
-                            prop.value (string form.PaidByIndex)
-                            prop.onChange (fun (v: string) -> set (fun f -> { f with PaidByIndex = int v }))
+                            prop.value (form.PaidById |> fun (MemberId g) -> string g)
+                            prop.onChange (fun (v: string) -> set (fun f -> { f with PaidById = MemberId (System.Guid.Parse v) }))
                             prop.children (
-                                members |> List.mapi (fun i m ->
-                                    Html.option [ prop.value (string i); prop.text m.DisplayName ]
+                                members |> List.map (fun m ->
+                                    let (MemberId g) = m.Id
+                                    Html.option [ prop.value (string g); prop.text m.DisplayName ]
                                 )
                             )
                         ])
@@ -146,8 +145,8 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                 Html.div [
                                     prop.className "space-y-1"
                                     prop.children (
-                                        members |> List.mapi (fun i m ->
-                                            let included = Set.contains i form.IncludedIndices
+                                        members |> List.map (fun m ->
+                                            let included = Set.contains m.Id form.Included
                                             Html.label [
                                                 prop.className (Styles.cx [ "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer"; if included then "bg-teal-50" else "hover:bg-gray-50" ])
                                                 prop.children [
@@ -157,8 +156,8 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                                         prop.isChecked included
                                                         prop.onChange (fun (v: bool) ->
                                                             set (fun f ->
-                                                                let indices = if v then Set.add i f.IncludedIndices else Set.remove i f.IncludedIndices
-                                                                { f with IncludedIndices = indices }))
+                                                                let ids = if v then Set.add m.Id f.Included else Set.remove m.Id f.Included
+                                                                { f with Included = ids }))
                                                     ]
                                                     Html.span [ prop.className "text-sm text-gray-800 select-none"; prop.text m.DisplayName ]
                                                 ]
@@ -166,14 +165,14 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                     )
                                 ]
                             | CustomSplit ->
-                                let totalAmt   = try decimal form.AmountText with _ -> 0m
+                                let totalAmt   = form.Amount.Parsed |> Option.defaultValue 0m
                                 let sharesSum  = form.CustomAmounts |> Map.toList |> List.sumBy (fun (_, txt) -> try decimal txt with _ -> 0m)
                                 let remaining  = totalAmt - sharesSum
                                 Html.div [
                                     prop.className "space-y-2"
                                     prop.children (
-                                        (members |> List.mapi (fun i m ->
-                                            let txt = form.CustomAmounts |> Map.tryFind i |> Option.defaultValue ""
+                                        (members |> List.map (fun m ->
+                                            let txt = form.CustomAmounts |> Map.tryFind m.Id |> Option.defaultValue ""
                                             Html.div [
                                                 prop.className "flex items-center gap-3"
                                                 prop.children [
@@ -183,7 +182,7 @@ let view (state: SpaceState) (rates: Map<string, decimal>) (form: ExpenseForm) (
                                                         prop.className Styles.input
                                                         prop.placeholder "0.00"
                                                         prop.value txt
-                                                        prop.onChange (fun v -> set (fun f -> { f with CustomAmounts = Map.add i v f.CustomAmounts }))
+                                                        prop.onChange (fun v -> set (fun f -> { f with CustomAmounts = Map.add m.Id v f.CustomAmounts }))
                                                     ]
                                                 ]
                                             ]))

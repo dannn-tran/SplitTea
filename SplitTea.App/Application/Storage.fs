@@ -20,9 +20,9 @@ let private eventSortKey (raw: obj) =
     if sequence > 0L then 0, sequence, "", eventId
     else               1, 0L, occurredAt, eventId
 
-let private toStored (event: SpaceEvent) (synced: bool) : obj =
+let private toStored (event: SpaceEvent) : obj =
     let stored : obj = Serde.encodeEventJson event |> jsonParse
-    stored?synced <- synced
+    stored?status <- "pending"
     stored
 
 let private fromStored (raw: obj) : SpaceEvent option =
@@ -30,20 +30,16 @@ let private fromStored (raw: obj) : SpaceEvent option =
     |> Serde.decodeEventJson
     |> Result.toOption
 
-#if DEVMODE
 let private devChannel : obj = emitJsExpr () "new BroadcastChannel('splittea-dev')"
-#endif
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 let saveEvent (event: SpaceEvent) : Async<unit> =
     async {
-        let stored = toStored event false
+        let stored = toStored event
         do! IndexedDb.saveEvent stored
-#if DEVMODE
         if DevMode.isEnabled () then
             devChannel?postMessage(stored?spaceId) |> ignore
-#endif
     }
 
 let loadSpaceState (spaceId: SpaceId) : Async<SpaceState> =
@@ -80,19 +76,6 @@ type ConflictedEvent = {
     Reason      : string
 }
 
-let private eventId = function
-    | SpaceCreated e       -> e.Id
-    | SpaceRenamed e       -> e.Id
-    | MemberAdded e        -> e.Id
-    | MemberRenamed e      -> e.Id
-    | CategoryAdded e      -> e.Id
-    | CategoryRenamed e    -> e.Id
-    | CategoryArchived e   -> e.Id
-    | ExpenseAdded e       -> e.Id
-    | ExpenseCorrected e   -> e.Id
-    | ExpenseDeleted e     -> e.Id
-    | SettlementRecorded e -> e.Id
-
 let private describeEvent = function
     | SpaceCreated _       -> "Create space"
     | SpaceRenamed _       -> "Rename space"
@@ -128,18 +111,18 @@ let private describeError = function
 let rebaseAndDisplay (spaceId: SpaceId) : Async<SpaceState * ConflictedEvent list> =
     async {
         let! raws = IndexedDb.getEventsBySpace (spaceIdStr spaceId)
-        let synced  = raws |> Array.filter (fun r -> string r?synced = "true")
+        let synced  = raws |> Array.filter (fun r -> string r?status = "synced")
                            |> Array.sortBy eventSortKey
                            |> Array.choose fromStored
                            |> Array.toList
-        let pending = raws |> Array.filter (fun r -> r?synced = box false)
+        let pending = raws |> Array.filter (fun r -> string r?status = "pending")
                            |> Array.sortBy eventSortKey
                            |> Array.choose fromStored
                            |> Array.toList
-        let (displayState, rebaseConflicts) = Rebase.apply synced pending
+        let displayState, rebaseConflicts = Rebase.apply synced pending
         let conflicts = ResizeArray()
         for rc in rebaseConflicts do
-            let id = eventId rc.Event
+            let id = rc.Event |> SpaceEvent.getId
             do! IndexedDb.markConflicted (eventIdStr id)
             conflicts.Add {
                 EventId     = id

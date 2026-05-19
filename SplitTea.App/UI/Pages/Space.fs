@@ -64,6 +64,7 @@ let private expenseRow (state: SpaceState) (dispatch: UITypes.Msg -> unit) (expe
                         prop.type' "button"
                         prop.className Styles.btnIconSmPrimary
                         prop.title "Edit"
+                        prop.ariaLabel $"Edit %s{expense.Description}"
                         prop.onClick (fun _ -> dispatch (UITypes.EditExpenseClick expense.ExpenseId))
                         prop.children [ Icons.pencil ]
                     ]
@@ -71,6 +72,7 @@ let private expenseRow (state: SpaceState) (dispatch: UITypes.Msg -> unit) (expe
                         prop.type' "button"
                         prop.className Styles.btnIconSmDanger
                         prop.title "Delete"
+                        prop.ariaLabel $"Delete %s{expense.Description}"
                         prop.onClick (fun _ -> dispatch (UITypes.DeleteExpenseClick expense.ExpenseId))
                         prop.children [ Icons.trash ]
                     ]
@@ -96,12 +98,16 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
 
     Html.div [
         prop.className "fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+        prop.onKeyDown (fun e -> if e.key = "Escape" then dispatch UITypes.SettingsToggled)
         prop.children [
             Html.div [
                 prop.className "absolute inset-0 bg-black/40"
                 prop.onClick (fun _ -> dispatch UITypes.SettingsToggled)
             ]
             Html.div [
+                prop.role "dialog"
+                prop.custom("aria-modal", "true")
+                prop.ariaLabel "Space Settings"
                 prop.className "relative z-10 bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto p-5 space-y-5"
                 prop.children [
                     Html.div [
@@ -110,6 +116,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                             Html.h2 [ prop.className "text-lg font-bold text-gray-900"; prop.text "Space Settings" ]
                             Html.button [
                                 prop.type' "button"
+                                prop.ariaLabel "Close"
                                 prop.className "p-1 text-gray-400 hover:text-gray-600 rounded-lg transition-colors text-lg leading-none"
                                 prop.onClick (fun _ -> dispatch UITypes.SettingsToggled)
                                 prop.text "✕"
@@ -136,6 +143,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                             prop.type' "button"
                                             prop.className Styles.btnIconSmPrimary
                                             prop.title "Save"
+                                            prop.ariaLabel "Save space name"
                                             prop.onClick (fun _ -> dispatch UITypes.SaveSpaceRename)
                                             prop.children [ Icons.check ]
                                         ]
@@ -150,6 +158,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                             prop.type' "button"
                                             prop.className Styles.btnIconSmPrimary
                                             prop.title "Rename"
+                                            prop.ariaLabel "Rename space"
                                             prop.onClick (fun _ -> dispatch UITypes.StartSpaceRename)
                                             prop.children [ Icons.pencil ]
                                         ]
@@ -207,6 +216,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                                         prop.type' "button"
                                                         prop.className Styles.btnIconSmPrimary
                                                         prop.title (if isEditing then "Save" else "Rename")
+                                                        prop.ariaLabel (if isEditing then $"Save %s{category.Name}" else $"Rename %s{category.Name}")
                                                         prop.onClick (fun _ ->
                                                             if isEditing then dispatch UITypes.SaveCategoryRename
                                                             else dispatch (UITypes.StartCategoryRename category.Name))
@@ -217,6 +227,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
                                                             prop.type' "button"
                                                             prop.className Styles.btnIconSmDanger
                                                             prop.title "Archive"
+                                                            prop.ariaLabel $"Archive %s{category.Name}"
                                                             prop.onClick (fun _ -> dispatch (UITypes.ArchiveCategory category.Name))
                                                             prop.children [ Icons.trash ]
                                                         ]
@@ -243,7 +254,7 @@ let private settingsModal (state: SpaceState) (model: UITypes.Model) (dispatch: 
     ]
 
 let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> unit) =
-    let positions   = Projections.computeNetPositions state
+    let positions   = Projections.computeNetPositions state model.ExchangeRates
     let settlements = Projections.computeMinimumSettlements positions
     let spaceName   = if state.Name = "" then "Space" else state.Name
     let categories =
@@ -284,6 +295,7 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                                         prop.type' "button"
                                         prop.className Styles.btnIcon
                                         prop.title "Add expense"
+                                        prop.ariaLabel "Add expense"
                                         prop.onClick (fun _ -> dispatch UITypes.AddExpenseClick)
                                         prop.children [ Icons.plus ]
                                     ]
@@ -291,6 +303,7 @@ let view (state: SpaceState) (model: UITypes.Model) (dispatch: UITypes.Msg -> un
                                         prop.type' "button"
                                         prop.className Styles.btnIcon
                                         prop.title "Space settings"
+                                        prop.ariaLabel "Space settings"
                                         prop.onClick (fun _ -> dispatch UITypes.SettingsToggled)
                                         prop.children [ Icons.gear ]
                                     ]

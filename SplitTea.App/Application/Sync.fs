@@ -13,41 +13,37 @@ type PushOutcome =
 // Returns per-event outcomes so the caller can trigger rebase on permanent rejections.
 let pushPending (authToken: string) : Async<PushOutcome list> =
     async {
-#if DEVMODE
         if DevMode.isEnabled () then
             return []
         else
-#endif
-        let! pending = IndexedDb.getPendingEvents ()
-        let outcomes = ResizeArray()
-        let mutable tokenExpired = false
-        for raw in pending do
-            if not tokenExpired then
-                let! result = SupabaseSync.pushEvent raw authToken
-                match result with
-                | Ok () ->
-                    do! IndexedDb.markSynced (string raw?id)
-                    outcomes.Add Pushed
-                | Error (401, _) ->
-                    tokenExpired <- true
-                    outcomes.Add TokenExpired
-                | Error (status, _) when status >= 400 && status < 500 ->
-                    do! IndexedDb.markConflicted (string raw?id)
-                    outcomes.Add PermanentRejection
-                | Error _ ->
-                    outcomes.Add TransientFailure
-        return outcomes |> Seq.toList
+            let! pending = IndexedDb.getPendingEvents ()
+            let outcomes = ResizeArray()
+            let mutable tokenExpired = false
+            for raw in pending do
+                if not tokenExpired then
+                    let! result = SupabaseSync.pushEvent raw authToken
+                    match result with
+                    | Ok () ->
+                        do! IndexedDb.markSynced (string raw?id)
+                        outcomes.Add Pushed
+                    | Error (401, _) ->
+                        tokenExpired <- true
+                        outcomes.Add TokenExpired
+                    | Error (status, _) when status >= 400 && status < 500 ->
+                        do! IndexedDb.markConflicted (string raw?id)
+                        outcomes.Add PermanentRejection
+                    | Error _ ->
+                        outcomes.Add TransientFailure
+            return outcomes |> Seq.toList
     }
 
 // Subscribe to Supabase Realtime for a space.
 // Each inbound INSERT is saved locally (marked synced=true) then onNewEvent () is called.
 // Returns an unsubscribe function.
 let subscribeSpace (spaceId: SpaceId) (onNewEvent: unit -> unit) : unit -> unit =
-#if DEVMODE
     if DevMode.isEnabled () then
         fun () -> ()
     else
-#endif
         let (SpaceId g) = spaceId
         SupabaseSync.subscribeSpace (string g) (fun normalized ->
             async {

@@ -28,32 +28,25 @@ let private mapUser (jsUser: obj) (session: obj) : AuthUser option =
 
 let signInWithMagicLink (email: string) : Async<Result<unit, string>> =
     async {
-#if DEVMODE
         if DevMode.isEnabled () then
             return Ok ()
         else
-#endif
-        let! result = supabase?auth?signInWithOtp({| email = email |}) |> Async.AwaitPromise
-        if isNull result?error then
-            return Ok ()
-        else
-            return Error (string result?error?message)
+            let! result = supabase?auth?signInWithOtp({| email = email |}) |> Async.AwaitPromise
+            if isNull result?error then
+                return Ok ()
+            else
+                return Error (string result?error?message)
     }
 
 let signOut () : Async<unit> =
     async {
-#if DEVMODE
-        if DevMode.isEnabled () then
+        if not (DevMode.isEnabled ()) then
+            let! _ = supabase?auth?signOut() |> Async.AwaitPromise
             ()
-        else
-#endif
-        let! _ = supabase?auth?signOut() |> Async.AwaitPromise
-        ()
     }
 
 let getUser () : Async<AuthUser option> =
     async {
-#if DEVMODE
         if DevMode.isEnabled () then
             return Some {
                 Id          = string DevMode.fakeUserId
@@ -61,16 +54,14 @@ let getUser () : Async<AuthUser option> =
                 AccessToken = ""
             }
         else
-#endif
-        let! result = supabase?auth?getSession() |> Async.AwaitPromise
-        let session = result?data?session
-        let user    = if isNull session then null else session?user
-        return mapUser user session
+            let! result = supabase?auth?getSession() |> Async.AwaitPromise
+            let session = result?data?session
+            let user    = if isNull session then null else session?user
+            return mapUser user session
     }
 
 // Returns an unsubscribe function.
 let subscribe (callback: AuthEvent -> unit) : unit -> unit =
-#if DEVMODE
     if DevMode.isEnabled () then
         let user = {
             Id          = string DevMode.fakeUserId
@@ -80,14 +71,13 @@ let subscribe (callback: AuthEvent -> unit) : unit -> unit =
         callback (SignedIn user)
         fun () -> ()
     else
-#endif
-    let sub =
-        supabase?auth?onAuthStateChange(fun (event: string) (session: obj) ->
-            if event = "SIGNED_IN" && not (isNull session) then
-                match mapUser (session?user) session with
-                | Some user -> callback (SignedIn user)
-                | None      -> callback SignedOut
-            else
-                callback SignedOut
-        )
-    fun () -> sub?data?subscription?unsubscribe()
+        let sub =
+            supabase?auth?onAuthStateChange(fun (event: string) (session: obj) ->
+                if event = "SIGNED_IN" && not (isNull session) then
+                    match mapUser (session?user) session with
+                    | Some user -> callback (SignedIn user)
+                    | None      -> callback SignedOut
+                else
+                    callback SignedOut
+            )
+        fun () -> sub?data?subscription?unsubscribe()

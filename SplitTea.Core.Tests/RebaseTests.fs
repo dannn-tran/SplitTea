@@ -8,14 +8,14 @@ let private syncedBase = [ spaceCreated; aliceAdded; bobAdded; carolAdded ]
 
 let private expenseByAlice = ExpenseAdded (envelope aliceId 10 {
     ExpenseId = expense1Id; Description = "Dinner"
-    PaidAmount = 50m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+    PaidAmount = 50m; PaidCurrency = "GBP"; PaidBy = aliceId
     Split = Equal [aliceId; bobId]; Date = date 2024 6 1; Category = None; Notes = None
 })
 
 let private correctionByAlice = ExpenseCorrected (envelope aliceId 11 {
     OriginalExpenseId = expense1Id
     Description = Some "Dinner (corrected)"; PaidAmount = None; PaidCurrency = None
-    ExchangeRate = Unchanged; PaidBy = None; Split = None; Date = None
+    PaidBy = None; Split = None; Date = None
     Category = Unchanged; Notes = Unchanged; Reason = None
 })
 
@@ -41,7 +41,7 @@ module ``Rebase apply`` =
     let ``multiple valid pending events all included`` () =
         let pending = [ expenseByAlice; ExpenseAdded (envelope bobId 11 {
             ExpenseId = expense2Id; Description = "Hotel"
-            PaidAmount = 120m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = bobId
+            PaidAmount = 120m; PaidCurrency = "GBP"; PaidBy = bobId
             Split = Equal [bobId; carolId]; Date = date 2024 6 2; Category = None; Notes = None
         }) ]
         let (state, conflicts) = Rebase.apply syncedBase pending
@@ -74,7 +74,7 @@ module ``Rebase apply`` =
         // pending correction of expense1Id (should also conflict since add failed)
         let pendingAdd = ExpenseAdded (envelope unknownMemberId 10 {
             ExpenseId = expense1Id; Description = "Dinner"
-            PaidAmount = 50m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            PaidAmount = 50m; PaidCurrency = "GBP"; PaidBy = aliceId
             Split = Equal [aliceId; bobId]; Date = date 2024 6 1; Category = None; Notes = None
         })
         let (state, conflicts) = Rebase.apply syncedBase [pendingAdd; correctionByAlice]
@@ -90,12 +90,12 @@ module ``Rebase apply`` =
         // invalid event (unknown actor), then valid expense by bob — bob's should appear
         let invalidEvent = ExpenseAdded (envelope unknownMemberId 10 {
             ExpenseId = expense1Id; Description = "Invalid"
-            PaidAmount = 50m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            PaidAmount = 50m; PaidCurrency = "GBP"; PaidBy = aliceId
             Split = Equal [aliceId]; Date = date 2024 6 1; Category = None; Notes = None
         })
         let validEvent = ExpenseAdded (envelope bobId 11 {
             ExpenseId = expense2Id; Description = "Valid by Bob"
-            PaidAmount = 30m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = bobId
+            PaidAmount = 30m; PaidCurrency = "GBP"; PaidBy = bobId
             Split = Equal [bobId]; Date = date 2024 6 2; Category = None; Notes = None
         })
         let (state, conflicts) = Rebase.apply syncedBase [invalidEvent; validEvent]

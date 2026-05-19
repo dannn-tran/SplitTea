@@ -8,7 +8,7 @@ open SplitTea.Core.Tests.Helpers
 module ``computeNetPositions`` =
     [<Fact>]
     let ``worked example: Alice +42 Bob +82 Carol -124`` () =
-        let positions = computeNetPositions (makeWorkedState ())
+        let positions = computeNetPositions (makeWorkedState ()) Map.empty
         Assert.Equal(42m,   (findPosition aliceId positions).Amount)
         Assert.Equal(82m,   (findPosition bobId   positions).Amount)
         Assert.Equal(-124m, (findPosition carolId positions).Amount)
@@ -19,14 +19,14 @@ module ``computeNetPositions`` =
         // non-payers each owe 3.34; payer.net = 6.68
         let expense = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "Rounding test"
-            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            PaidAmount = 10m; PaidCurrency = "GBP"; PaidBy = aliceId
             Split = Equal [aliceId; bobId; carolId]
             Date = date 2024 1 1; Category = None; Notes = None
         })
         let state = Reducer.replayEvents [
             spaceCreated; aliceAdded; bobAdded; carolAdded; expense
         ]
-        let positions = computeNetPositions state
+        let positions = computeNetPositions state Map.empty
         Assert.Equal(6.68m,  (findPosition aliceId positions).Amount)
         Assert.Equal(-3.34m, (findPosition bobId   positions).Amount)
         Assert.Equal(-3.34m, (findPosition carolId positions).Amount)
@@ -36,7 +36,7 @@ module ``computeNetPositions`` =
         let state0 = makeBaseState () |> fun s -> Reducer.reduce s workedExpense1
         let deletion = ExpenseDeleted (envelope aliceId 10 { ExpenseId = expense1Id; Reason = None })
         let state1 = Reducer.reduce state0 deletion
-        let positions = computeNetPositions state1
+        let positions = computeNetPositions state1 Map.empty
         Assert.Equal(0m, (findPosition aliceId positions).Amount)
         Assert.Equal(0m, (findPosition carolId positions).Amount)
 
@@ -45,21 +45,65 @@ module ``computeNetPositions`` =
         // Carol pays Alice 42 → Alice 0, Bob +82, Carol -82
         let settle = SettlementRecorded (envelope carolId 10 {
             SettlementId = settlement1Id; From = carolId; To = aliceId
-            Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
+            Payments = [{ Amount = 42m; Currency = "GBP" }]
+            Date = date 2024 1 3; Notes = None
         })
         let state = Reducer.replayEvents [
             spaceCreated; aliceAdded; bobAdded; carolAdded
             workedExpense1; workedExpense2; settle
         ]
-        let positions = computeNetPositions state
+        let positions = computeNetPositions state Map.empty
         Assert.Equal(0m,   (findPosition aliceId positions).Amount)
         Assert.Equal(82m,  (findPosition bobId   positions).Amount)
         Assert.Equal(-82m, (findPosition carolId positions).Amount)
 
     [<Fact>]
     let ``state with no expenses returns all-zero positions`` () =
-        let positions = computeNetPositions (makeBaseState ())
+        let positions = computeNetPositions (makeBaseState ()) Map.empty
         Assert.All(positions, fun p -> Assert.Equal(0m, p.Amount))
+
+module ``computeNetPositions - multi-currency decimal places`` =
+    let private makeStateWithCurrency currency =
+        Reducer.replayEvents [
+            SpaceCreated (envelope aliceId 1 { Name = "Trip"; Currency = currency; CreatedBy = aliceId; Categories = [] })
+            aliceAdded; bobAdded; carolAdded
+        ]
+
+    [<Fact>]
+    let ``JPY (0 dp) equal split rounds up to whole yen, payer absorbs remainder`` () =
+        // ¥1000 / 3 = ceiling(333.33) = 334 each; remainder = -2 → payer gets 332
+        let expense = ExpenseAdded (envelope aliceId 5 {
+            ExpenseId = expense3Id; Description = "Ramen"
+            PaidAmount = 1000m; PaidCurrency = "JPY"; PaidBy = aliceId
+            Split = Equal [aliceId; bobId; carolId]
+            Date = date 2024 1 1; Category = None; Notes = None
+        })
+        let state = Reducer.replayEvents [
+            SpaceCreated (envelope aliceId 1 { Name = "Trip"; Currency = "JPY"; CreatedBy = aliceId; Categories = [] })
+            aliceAdded; bobAdded; carolAdded; expense
+        ]
+        let positions = computeNetPositions state Map.empty
+        Assert.Equal(668m,  (findPosition aliceId positions).Amount)
+        Assert.Equal(-334m, (findPosition bobId   positions).Amount)
+        Assert.Equal(-334m, (findPosition carolId positions).Amount)
+
+    [<Fact>]
+    let ``BHD (3 dp) equal split rounds to millies, payer absorbs remainder`` () =
+        // 10 BHD / 3 = ceiling(3333.33)/1000 = 3.334 each; remainder = -0.002 → payer gets 3.332
+        let expense = ExpenseAdded (envelope aliceId 5 {
+            ExpenseId = expense3Id; Description = "Coffee"
+            PaidAmount = 10m; PaidCurrency = "BHD"; PaidBy = aliceId
+            Split = Equal [aliceId; bobId; carolId]
+            Date = date 2024 1 1; Category = None; Notes = None
+        })
+        let state = Reducer.replayEvents [
+            SpaceCreated (envelope aliceId 1 { Name = "Trip"; Currency = "BHD"; CreatedBy = aliceId; Categories = [] })
+            aliceAdded; bobAdded; carolAdded; expense
+        ]
+        let positions = computeNetPositions state Map.empty
+        Assert.Equal(6.668m,  (findPosition aliceId positions).Amount)
+        Assert.Equal(-3.334m, (findPosition bobId   positions).Amount)
+        Assert.Equal(-3.334m, (findPosition carolId positions).Amount)
 
 module ``computeMinimumSettlements`` =
     [<Fact>]
@@ -85,7 +129,7 @@ module ``computeMinimumSettlements`` =
 
     [<Fact>]
     let ``worked example produces minimum two settlements`` () =
-        let positions = computeNetPositions (makeWorkedState ())
+        let positions = computeNetPositions (makeWorkedState ()) Map.empty
         let settlements = computeMinimumSettlements positions
         Assert.Equal(2, List.length settlements)
         Assert.True(List.contains { From = carolId; To = bobId;   Amount = 82m } settlements)

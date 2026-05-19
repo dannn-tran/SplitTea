@@ -71,7 +71,7 @@ module ``reduce ExpenseCorrected`` =
         let state0 = baseWithExpense ()
         let correction = correctWith aliceId {
             OriginalExpenseId = expense1Id
-            Description = Some "Updated"; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+            Description = Some "Updated"; PaidAmount = None; PaidCurrency = None
             PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; Reason = None
         }
         let exp = Reducer.reduce state0 correction |> fun s -> Map.find expense1Id s.Expenses
@@ -82,12 +82,12 @@ module ``reduce ExpenseCorrected`` =
     let ``Notes = Clear clears notes`` () =
         let withNotes = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "X"
-            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            PaidAmount = 10m; PaidCurrency = "GBP"; PaidBy = aliceId
             Split = Equal [aliceId]; Date = date 2024 1 1; Category = None; Notes = Some "keep"
         })
         let clear = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
-            Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+            Description = None; PaidAmount = None; PaidCurrency = None
             PaidBy = None; Split = None; Date = None
             Category = Unchanged; Notes = Clear
             Reason = None
@@ -102,12 +102,12 @@ module ``reduce ExpenseCorrected`` =
     let ``Notes = Unchanged leaves notes unchanged`` () =
         let withNotes = ExpenseAdded (envelope aliceId 5 {
             ExpenseId = expense3Id; Description = "X"
-            PaidAmount = 10m; PaidCurrency = "GBP"; ExchangeRate = None; PaidBy = aliceId
+            PaidAmount = 10m; PaidCurrency = "GBP"; PaidBy = aliceId
             Split = Equal [aliceId]; Date = date 2024 1 1; Category = None; Notes = Some "keep"
         })
         let noChange = ExpenseCorrected (envelope aliceId 10 {
             OriginalExpenseId = expense3Id
-            Description = None; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+            Description = None; PaidAmount = None; PaidCurrency = None
             PaidBy = None; Split = None; Date = None
             Category = Unchanged; Notes = Unchanged
             Reason = None
@@ -123,7 +123,7 @@ module ``reduce ExpenseCorrected`` =
         let state0 = baseWithExpense ()
         let correction = correctWith aliceId {
             OriginalExpenseId = unknownExpenseId
-            Description = Some "X"; PaidAmount = None; PaidCurrency = None; ExchangeRate = Unchanged
+            Description = Some "X"; PaidAmount = None; PaidCurrency = None
             PaidBy = None; Split = None; Date = None; Category = Unchanged; Notes = Unchanged; Reason = None
         }
         let state1 = Reducer.reduce state0 correction
@@ -149,7 +149,8 @@ module ``reduce SettlementRecorded`` =
     let ``appends payload to Settlements`` () =
         let s = SettlementRecorded (envelope carolId 10 {
             SettlementId = settlement1Id; From = carolId; To = aliceId
-            Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
+            Payments = [{ Amount = 42m; Currency = "GBP" }]
+            Date = date 2024 1 3; Notes = None
         })
         let state = makeBaseState () |> fun st -> Reducer.reduce st s
         Assert.Equal(1, List.length state.Settlements)
@@ -160,11 +161,13 @@ module ``reduce SettlementRecorded`` =
     let ``accumulates multiple settlements`` () =
         let s1 = SettlementRecorded (envelope carolId 10 {
             SettlementId = settlement1Id; From = carolId; To = aliceId
-            Amount = 42m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
+            Payments = [{ Amount = 42m; Currency = "GBP" }]
+            Date = date 2024 1 3; Notes = None
         })
         let s2 = SettlementRecorded (envelope carolId 11 {
             SettlementId = settlement2Id; From = carolId; To = bobId
-            Amount = 82m; Currency = "GBP"; ExchangeRate = None; Date = date 2024 1 3; Notes = None
+            Payments = [{ Amount = 82m; Currency = "GBP" }]
+            Date = date 2024 1 3; Notes = None
         })
         let state =
             makeBaseState ()

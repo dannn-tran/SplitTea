@@ -5,7 +5,6 @@ type ExpenseState = {
     Description  : string
     PaidAmount   : Amount
     PaidCurrency : CurrencyCode
-    ExchangeRate : decimal option
     PaidBy       : MemberId
     Split        : Split
     Date         : System.DateOnly
@@ -92,7 +91,6 @@ module Reducer =
                 Description  = p.Description
                 PaidAmount   = p.PaidAmount
                 PaidCurrency = p.PaidCurrency
-                ExchangeRate = p.ExchangeRate
                 PaidBy       = p.PaidBy
                 Split        = p.Split
                 Date         = p.Date
@@ -115,7 +113,6 @@ module Reducer =
                         Description  = p.Description  |> Option.defaultValue existing.Description
                         PaidAmount   = p.PaidAmount   |> Option.defaultValue existing.PaidAmount
                         PaidCurrency = p.PaidCurrency |> Option.defaultValue existing.PaidCurrency
-                        ExchangeRate = applyPatch existing.ExchangeRate p.ExchangeRate
                         PaidBy       = p.PaidBy       |> Option.defaultValue existing.PaidBy
                         Split        = p.Split        |> Option.defaultValue existing.Split
                         Date         = p.Date         |> Option.defaultValue existing.Date

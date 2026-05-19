@@ -34,6 +34,25 @@ let loadSpaceState (connString: string) (spaceId: SpaceId) : Async<SpaceState> =
         return Reducer.replayEvents (eventList |> Seq.toList)
     }
 
+// Returns true if the given user has access to the given space via space_access.
+let userHasAccess (connString: string) (spaceId: SpaceId) (userId: UserId) : Async<bool> =
+    async {
+        try
+            let (SpaceId sg) = spaceId
+            let (UserId ug)  = userId
+            use conn = new NpgsqlConnection(connString)
+            do! conn.OpenAsync() |> Async.AwaitTask
+            use cmd = conn.CreateCommand()
+            cmd.CommandText <-
+                "SELECT 1 FROM public.space_access WHERE space_id = $1 AND user_id = $2 LIMIT 1"
+            cmd.Parameters.AddWithValue("$1", sg) |> ignore
+            cmd.Parameters.AddWithValue("$2", ug) |> ignore
+            let! result = cmd.ExecuteScalarAsync() |> Async.AwaitTask
+            return result <> null
+        with _ ->
+            return false
+    }
+
 // Inserts a single event row. Uses the same JSON format as the client (camelCase).
 let insertEvent (connString: string) (eventJson: string) : Async<Result<unit, string>> =
     async {
@@ -71,7 +90,7 @@ let claimSpace (connString: string) (spaceId: System.Guid) (userId: System.Guid)
         try
             use conn = new NpgsqlConnection(connString)
             do! conn.OpenAsync() |> Async.AwaitTask
-            use! tx = conn.BeginTransactionAsync() |> Async.AwaitTask
+            use! tx = conn.BeginTransactionAsync().AsTask() |> Async.AwaitTask
             use checkCmd = conn.CreateCommand()
             checkCmd.Transaction <- tx
             checkCmd.CommandText <- "SELECT COUNT(*) FROM public.events WHERE space_id = $1"

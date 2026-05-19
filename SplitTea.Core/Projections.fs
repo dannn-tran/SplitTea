@@ -36,47 +36,52 @@ type MonthSpend = {
 }
 
 module Projections =
-    let private round2 (x: decimal) =
-        System.Math.Round(x, 2, System.MidpointRounding.AwayFromZero)
+    let decimalPlaces (cc: CurrencyCode) : int =
+        match cc.ToUpperInvariant() with
+        | "JPY" | "KRW" | "VND" | "IDR" | "UGX" | "CLP" | "ISK" -> 0
+        | "BHD" | "KWD" | "OMR" | "JOD" | "IQD" | "LYD" | "TND" -> 3
+        | _ -> 2
 
-    let private workingAmount (e: ExpenseState) (groupCurrency: CurrencyCode) : Amount option =
+    let private roundTo (dp: int) (x: decimal) =
+        System.Math.Round(x, dp, System.MidpointRounding.AwayFromZero)
+
+    let private workingAmount (e: ExpenseState) (groupCurrency: CurrencyCode) (rates: Map<CurrencyCode, decimal>) : Amount option =
         if e.PaidCurrency = groupCurrency then Some e.PaidAmount
-        else e.ExchangeRate |> Option.map (fun r -> e.PaidAmount * r)
+        else rates |> Map.tryFind e.PaidCurrency |> Option.map (fun r -> e.PaidAmount * r)
 
-    let private settlementWorkingAmount (s: SettlementRecordedPayload) (groupCurrency: CurrencyCode) : Amount option =
-        if s.Currency = groupCurrency then Some s.Amount
-        else s.ExchangeRate |> Option.map (fun r -> s.Amount * r)
+    let private settlementWorkingAmount (s: SettlementRecordedPayload) (groupCurrency: CurrencyCode) (rates: Map<CurrencyCode, decimal>) : Amount option =
+        let resolved =
+            s.Payments
+            |> List.choose (fun leg ->
+                if leg.Currency = groupCurrency then Some leg.Amount
+                else rates |> Map.tryFind leg.Currency |> Option.map (fun r -> leg.Amount * r))
+        if List.isEmpty resolved then None else Some (List.sum resolved)
 
     // Returns per-member share amounts summing exactly to `amount`.
     // Payer absorbs any rounding remainder so non-payer obligations are exact.
-    // exchangeRate is only used for Exact split: shares are stored in PaidCurrency,
+    // rate is only used for Exact split: shares are stored in PaidCurrency,
     // so they need converting to group currency the same way PaidAmount does.
-    // Equal/Percentage/Shares receive amount already in group currency and don't need it.
-    let private expandSplit (amount: Amount) (exchangeRate: decimal option) (split: Split) (paidBy: MemberId) : Map<MemberId, Amount> =
+    let private expandSplit (dp: int) (amount: Amount) (rate: decimal) (split: Split) (paidBy: MemberId) : Map<MemberId, Amount> =
+        let scale = pown 10m dp
         match split with
         | Equal members ->
             let n = List.length members
             // Ceiling rounding: non-payers round up, payer absorbs any negative remainder
-            let share = System.Math.Ceiling(amount * 100m / decimal n) / 100m
+            let share = System.Math.Ceiling(amount * scale / decimal n) / scale
             let base' = members |> List.map (fun m -> m, share) |> Map.ofList
             let remainder = amount - share * decimal n
             let payerShare = Map.tryFind paidBy base' |> Option.defaultValue 0m
             Map.add paidBy (payerShare + remainder) base'
         | Exact shares ->
-            let rate = exchangeRate |> Option.defaultValue 1m
-            shares |> List.map (fun (m, s) -> m, round2 (s * rate)) |> Map.ofList
-        | Percentage shares ->
-            shares |> List.map (fun (m, pct) -> m, round2 (amount * pct / 100m)) |> Map.ofList
-        | Shares shares ->
-            let total = shares |> List.sumBy snd
-            shares |> List.map (fun (m, s) -> m, round2 (amount * decimal s / decimal total)) |> Map.ofList
+            shares |> List.map (fun (m, s) -> m, roundTo dp (s * rate)) |> Map.ofList
 
     let private addTo (memberId: MemberId) (delta: decimal) (m: Map<MemberId, decimal>) =
         let current = Map.tryFind memberId m |> Option.defaultValue 0m
         Map.add memberId (current + delta) m
 
-    let computeNetPositions (state: SpaceState) : NetPosition list =
+    let computeNetPositions (state: SpaceState) (rates: Map<CurrencyCode, decimal>) : NetPosition list =
         let init = state.Members |> Map.map (fun _ _ -> 0m)
+        let dp = decimalPlaces state.Currency
 
         let afterExpenses =
             state.Expenses
@@ -84,10 +89,14 @@ module Projections =
             |> Seq.map snd
             |> Seq.filter (fun e -> not e.IsDeleted)
             |> Seq.fold (fun pos expense ->
-                match workingAmount expense state.Currency with
+                let rate =
+                    if expense.PaidCurrency = state.Currency then Some 1m
+                    else Map.tryFind expense.PaidCurrency rates
+                match rate with
                 | None -> pos  // unresolved foreign-currency expense; skip
-                | Some amt ->
-                    let shares = expandSplit amt expense.ExchangeRate expense.Split expense.PaidBy
+                | Some r ->
+                    let amt = expense.PaidAmount * r
+                    let shares = expandSplit dp amt r expense.Split expense.PaidBy
                     shares
                     |> Map.toSeq
                     |> Seq.filter (fun (m, _) -> m <> expense.PaidBy)
@@ -99,7 +108,7 @@ module Projections =
         let afterSettlements =
             state.Settlements
             |> List.fold (fun pos s ->
-                match settlementWorkingAmount s state.Currency with
+                match settlementWorkingAmount s state.Currency rates with
                 | None     -> pos  // unresolved foreign-currency settlement; skip
                 | Some amt -> pos |> addTo s.From amt |> addTo s.To -amt
             ) afterExpenses
@@ -116,7 +125,7 @@ module Projections =
         let rec go creds debs acc =
             match creds, debs with
             | [], _ | _, [] -> List.rev acc
-            | (cred: NetPosition) :: restCreds, (deb: NetPosition) :: restDebs ->
+            | cred: NetPosition :: restCreds, deb: NetPosition :: restDebs ->
                 let settleAmt = min cred.Amount (-deb.Amount)
                 let settlement : SuggestedSettlement = { From = deb.MemberId; To = cred.MemberId; Amount = settleAmt }
                 let newCreds =
@@ -137,16 +146,16 @@ module Projections =
         |> List.map snd
         |> List.filter (fun e -> not e.IsDeleted)
 
-    let computeSpendingByCategory (state: SpaceState) : CategorySpend list =
+    let computeSpendingByCategory (state: SpaceState) (rates: Map<CurrencyCode, decimal>) : CategorySpend list =
         activeExpenses state
-        |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e.Category, amt))
+        |> List.choose (fun e -> workingAmount e state.Currency rates |> Option.map (fun amt -> e.Category, amt))
         |> List.groupBy (fun (cat, _) -> cat |> Option.defaultValue "Uncategorized")
         |> List.map (fun (cat, xs) -> { Category = cat; Total = xs |> List.sumBy snd })
         |> List.sortByDescending (fun c -> c.Total)
 
-    let computeSpendingByPayer (state: SpaceState) : MemberSpend list =
+    let computeSpendingByPayer (state: SpaceState) (rates: Map<CurrencyCode, decimal>) : MemberSpend list =
         activeExpenses state
-        |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e.PaidBy, amt))
+        |> List.choose (fun e -> workingAmount e state.Currency rates |> Option.map (fun amt -> e.PaidBy, amt))
         |> List.groupBy fst
         |> List.map (fun (mid, xs) -> { MemberId = mid; Total = xs |> List.sumBy snd })
         |> List.sortByDescending (fun m -> m.Total)
@@ -189,9 +198,9 @@ module Projections =
 
     // ─── Time-series spend projections ───────────────────────────────────────
 
-    let computeSpendingByWeek (state: SpaceState) : WeekSpend list =
+    let computeSpendingByWeek (state: SpaceState) (rates: Map<CurrencyCode, decimal>) : WeekSpend list =
         activeExpenses state
-        |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e, amt))
+        |> List.choose (fun e -> workingAmount e state.Currency rates |> Option.map (fun amt -> e, amt))
         |> List.groupBy (fun (e, _) -> isoWeek e.Date)
         |> List.map (fun ((year, week), xs) ->
             let expenses = xs |> List.map fst
@@ -201,9 +210,9 @@ module Projections =
               Total = xs |> List.sumBy snd })
         |> List.sortBy (fun w -> w.Year, w.Week)
 
-    let computeSpendingByMonth (state: SpaceState) : MonthSpend list =
+    let computeSpendingByMonth (state: SpaceState) (rates: Map<CurrencyCode, decimal>) : MonthSpend list =
         activeExpenses state
-        |> List.choose (fun e -> workingAmount e state.Currency |> Option.map (fun amt -> e, amt))
+        |> List.choose (fun e -> workingAmount e state.Currency rates |> Option.map (fun amt -> e, amt))
         |> List.groupBy (fun (e, _) -> e.Date.Year, e.Date.Month)
         |> List.map (fun ((year, month), xs) ->
             { Year  = year

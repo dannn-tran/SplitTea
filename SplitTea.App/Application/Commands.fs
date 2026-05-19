@@ -50,7 +50,6 @@ let addExpense
     (description:  string)
     (paidAmount:   Amount)
     (paidCurrency: CurrencyCode)
-    (exchangeRate: decimal option)
     (paidBy:       MemberId)
     (split:        Split)
     (date:         System.DateOnly)
@@ -62,7 +61,6 @@ let addExpense
         Description  = description
         PaidAmount   = paidAmount
         PaidCurrency = paidCurrency
-        ExchangeRate = exchangeRate
         PaidBy       = paidBy
         Split        = split
         Date         = date
@@ -114,7 +112,6 @@ let correctExpense
     (description:  string)
     (paidAmount:   Amount)
     (paidCurrency: CurrencyCode)
-    (exchangeRate: decimal option)
     (paidBy:       MemberId)
     (split:        Split)
     (date:         System.DateOnly)
@@ -132,7 +129,6 @@ let correctExpense
         Description       = diffOpt (=) description original.Description
         PaidAmount        = diffOpt (=) paidAmount   original.PaidAmount
         PaidCurrency      = diffOpt (=) paidCurrency original.PaidCurrency
-        ExchangeRate      = diffPatch exchangeRate    original.ExchangeRate
         PaidBy            = diffOpt (=) paidBy        original.PaidBy
         Split             = diffOpt (=) split          original.Split
         Date              = diffOpt (=) date           original.Date
@@ -154,23 +150,19 @@ let deleteExpense
     |> Storage.saveEvent
 
 let recordSettlement
-    (spaceId:     SpaceId)
-    (actorId:     MemberId)
-    (from:        MemberId)
-    (to':         MemberId)
-    (amount:      Amount)
-    (currency:    CurrencyCode)
-    (exchangeRate: decimal option)
-    (date:        System.DateOnly)
-    (notes:       string option)
+    (spaceId:  SpaceId)
+    (actorId:  MemberId)
+    (from:     MemberId)
+    (to':      MemberId)
+    (payments: SettlementLeg list)
+    (date:     System.DateOnly)
+    (notes:    string option)
     : Async<unit> =
     SettlementRecorded (mkEnvelope spaceId actorId {
         SettlementId = SettlementId (System.Guid.NewGuid())
         From         = from
         To           = to'
-        Amount       = amount
-        Currency     = currency
-        ExchangeRate = exchangeRate
+        Payments     = payments
         Date         = date
         Notes        = notes
     })

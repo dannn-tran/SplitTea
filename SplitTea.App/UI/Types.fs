@@ -2,6 +2,29 @@ module UITypes
 
 open SplitTea.Core
 
+type Field<'T> = {
+    Text    : string
+    Parsed  : 'T option
+    IsError : bool
+}
+
+[<RequireQualifiedAccess>]
+module Field =
+    let emptyDecimal : Field<decimal> = { Text = ""; Parsed = None; IsError = false }
+
+    let ofAmount (v: decimal) : Field<decimal> =
+        { Text = sprintf "%.2f" v; Parsed = Some v; IsError = false }
+
+    let ofRate (v: decimal) : Field<decimal> =
+        { Text = string v; Parsed = Some v; IsError = false }
+
+    let parseDecimal (text: string) : Field<decimal> =
+        let t = text.Trim()
+        if t = "" then { Text = text; Parsed = None; IsError = false }
+        else
+            try { Text = text; Parsed = Some (decimal t); IsError = false }
+            with _ -> { Text = text; Parsed = None; IsError = true }
+
 type Page =
     | SignIn
     | Loading
@@ -10,6 +33,7 @@ type Page =
 #endif
     | SpaceOverview
     | Analytics
+    | Activity
     | Profile
     | AddExpense
     | RecordSettlement
@@ -35,11 +59,11 @@ type ConfirmRequest = {
 type SplitMode = EqualSplit | CustomSplit
 
 type ExpenseForm = {
-    Description      : string
-    AmountText       : string
-    Currency         : string
-    ExchangeRateText : string
-    PaidByIndex      : int
+    Description  : string
+    Amount       : Field<decimal>
+    Currency     : string
+    ExchangeRate : Field<decimal>
+    PaidById     : MemberId
     DateText         : string
     Category         : string
     Notes            : string
@@ -48,24 +72,24 @@ type ExpenseForm = {
     IsAddingCategory : bool
     NewCategoryText  : string
     SplitMode        : SplitMode
-    IncludedIndices  : Set<int>
-    CustomAmounts    : Map<int, string>
+    Included         : Set<MemberId>
+    CustomAmounts    : Map<MemberId, string>
 }
 
 type SettlementForm = {
-    FromIndex         : int
-    ToIndex           : int
-    AmountText        : string
-    Currency          : string
-    ExchangeRateText  : string
-    UseSecondPayment  : bool
-    AmountText2       : string
-    Currency2         : string
-    ExchangeRateText2 : string
-    DateText          : string
-    Notes             : string
-    IsSubmitting      : bool
-    Error             : string option
+    FromId           : MemberId
+    ToId             : MemberId
+    Amount           : Field<decimal>
+    Currency         : string
+    ExchangeRate     : Field<decimal>
+    UseSecondPayment : bool
+    Amount2          : Field<decimal>
+    Currency2        : string
+    ExchangeRate2    : Field<decimal>
+    DateText         : string
+    Notes            : string
+    IsSubmitting     : bool
+    Error            : string option
 }
 
 type Model = {
@@ -96,9 +120,10 @@ type Model = {
     ShowSpaceSwitcher    : bool
     KnownSpaces          : Storage.SpaceSummary list
     CreateSpaceForm      : CreateSpaceForm
-    ConfirmDialog        : ConfirmRequest option
+    ConfirmDialog            : ConfirmRequest option
+    InstallPromptAvailable   : bool
 #if DEVMODE
-    DevActorId           : MemberId option
+    DevActorId               : MemberId option
 #endif
 }
 
@@ -112,7 +137,7 @@ type Msg =
     | SignInSubmit
     | SignInDone        of Result<unit, string>
     | SignOut
-    | SpaceLoaded       of SpaceId * SpaceState
+    | SpaceLoaded       of SpaceId * SpaceState * Storage.ConflictedEvent list
     | SpaceNotFound
     | NavigateTo        of Page
     | AddExpenseClick
@@ -162,6 +187,9 @@ type Msg =
     | SpaceDeleted           of Result<unit, string>
     | RequestConfirm         of ConfirmRequest
     | ConfirmResolved        of bool
+    | InstallPromptReady
+    | InstallApp
+    | DismissInstallPrompt
     | CreateSpaceNameSet     of string
     | CreateSpaceCurrencySet of string
     | CreateSpaceMemberSet   of string
